@@ -5,6 +5,7 @@ import sets
 import time
 import shutil
 import signal
+import logging
 import urllib2
 import datetime
 import tempfile
@@ -23,7 +24,9 @@ from matplotlib.pylab import setp
 from mpl_toolkits.axes_grid.parasite_axes import HostAxes, ParasiteAxes
 
 dpi = 72
-
+logging.basicConfig()
+log = logging.getLogger()
+log.setLevel(logging.INFO)
 
 class OIMDataSource(object):
 
@@ -45,6 +48,7 @@ class OIMDataSource(object):
                     sites.add(str(name_dom.firstChild.data))
                 except:
                     pass
+        log.debug("OIM returned the following sites: %s" % ", ".join(sites))
         return sites
 
     def query_ce_se(self):
@@ -71,6 +75,7 @@ class OIMDataSource(object):
                     ses.add(uri)
                 elif service_type == 'CE':
                     ces.add(uri)
+        log.info("OIM returned %i CEs and %i SEs" % (len(ces), len(ses)))
         return len(ces), len(ses)
 
 
@@ -88,8 +93,14 @@ class DataSource(object):
         host = self.cp.get("Gratia", "Host")
         database = self.cp.get("Gratia", "Database")
         port = int(self.cp.get("Gratia", "Port"))
-        self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
-            port=port, db=database)
+        try:
+            self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
+                port=port, db=database)
+            log.info("Successfully connected to Gratia database")
+        except Exception, e:
+            log.exception(e)
+            log.error("Unable to connect to Gratia database")
+            raise
 
     def get_params(self):
         hours = int(self.cp.get("Gratia", "hours"))
@@ -105,23 +116,32 @@ class DataSource(object):
         curs = self.conn.cursor()
         params = self.get_params()
         curs.execute(self.users_query, params)
-        return [i[1] for i in curs.fetchall()]
+        results = [i[1] for i in curs.fetchall()]
+        log.info("Gratia returned %i results for users" % len(results))
+        log.debug("Results are: %s." % ", ".join(results))
+        return results
 
     def query_user_num(self):
         curs = self.conn.cursor()
         params = self.get_params()
         curs.execute(self.user_num_query, params)
-        return curs.fetchall()[0][0]
+        results = curs.fetchall()[0][0]
+        log.info("Gratia returned %i active users." % results)
+        return results
 
     def query_jobs(self):
         curs = self.conn.cursor()
         params = self.get_params()
         curs.execute(self.jobs_query, params)
-        return [i[1]/float(params['span']/60) for i in curs.fetchall()]
+        results = [i[1]/float(params['span']/60) for i in curs.fetchall()]
+        log.info("Gratia returned %i results for jobs" % len(results))
+        log.debug("Results are: %s." % ", ".join(results))
+        return results
 
     jobs_query = """
         SELECT
-          (truncate((unix_timestamp(ServerDate)-%(offset)s)/%(span)s, 0)*%(span)s) as time,
+          (truncate((unix_timestamp(ServerDate)-%(offset)s)/%(span)s, 0)*
+            %(span)s) as time,
           count(*) as Records
         FROM JobUsageRecord_Meta 
         WHERE
@@ -135,7 +155,8 @@ class DataSource(object):
           time, count(*)
         FROM (
           SELECT
-            (truncate((unix_timestamp(ServerDate)-%(offset)s)/%(span)s, 0)*%(span)s) as time,
+            (truncate((unix_timestamp(ServerDate)-%(offset)s)/%(span)s, 0)*
+               %(span)s) as time,
              JUR.CommonName as Users
           FROM JobUsageRecord_Meta JURM
           JOIN JobUsageRecord JUR on JURM.dbid=JUR.dbid
@@ -165,19 +186,27 @@ class DataSource(object):
 class TransferData(object):
 
     def __init__(self):
-        self.time = None
+        self.starttime = None
+        self.endtime = None
         self.count = None
         self.volume_mb = None
 
 
-def get_files(cp, name):
-    name = cp.get("Filenames", name)
+def get_files(cp, config_name):
+    name = cp.get("Filenames", config_name)
     fd, tmpname = tempfile.mkstemp(prefix="osg_display")
     os.close(fd)
+    log.debug("Using temporary file %s for %s" % (tmpname, config_name))
     return name, tmpname
 
 def commit_files(name, tmpname):
-    shutil.move(tmpname, name)
+    log.debug("Overwriting %s with %s." % (name, tmpname))
+    try:
+        shutil.move(tmpname, name)
+    except Exception, e:
+        log.exception(e)
+        log.error("Unable to overwrite old file %s." % name)
+        raise
 
 
 class DataSourceTransfers(object):
@@ -185,20 +214,27 @@ class DataSourceTransfers(object):
     def __init__(self, cp):
         self.cp = cp
         self.data = {}
+        self.missing = sets.Set()
         
     def run(self):
         self.connect()
         self.load_cached()
         self.determine_missing()
+        self.query_missing()
         
     def connect(self):
-        user = self.cp.get("Gratia", "User")
-        password = self.cp.get("Gratia", "Password")
-        host = self.cp.get("Gratia", "Host")
-        database = self.cp.get("Gratia", "Database")
-        port = int(self.cp.get("Gratia", "Port"))
-        self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
-            port=port, db=database)
+        user = self.cp.get("Gratia Transfer", "User")
+        password = self.cp.get("Gratia Transfer", "Password")
+        host = self.cp.get("Gratia Transfer", "Host")
+        database = self.cp.get("Gratia Transfer", "Database")
+        port = int(self.cp.get("Gratia Transfer", "Port"))
+        try:
+            self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
+                port=port, db=database)
+        except Exception, e:
+            log.exception(e)
+            log.error("Unable to connect to Gratia Transfer DB")
+            raise
 
     def load_cached(self):
         try:
@@ -211,9 +247,12 @@ class DataSourceTransfers(object):
                 assert isinstance(tdata.time, datetime.datetime)
                 assert tdata.count != None
                 assert tdata.volume_mb != None
+                assert tdata.starttime != None
+                assert tdata.endtime != None
             self.data = data
-        except:
-            pass
+        except Exception, e:
+            log.warning("Unable to load cache; it may not exist. Error: %s" % \
+               str(e))
 
     def save_cache(self):
         now = datetime.datetime.now()
@@ -229,35 +268,75 @@ class DataSourceTransfers(object):
             pickle.dump(self.data, fp)
             fp.close()
             commit_files(name, tmpname)
-        except:
-            pass
+        except Exception, e:
+            log.warning("Unable to write cache; message: %s" % str(e))
 
-    def get_params(self):
-        hours = int(self.cp.get("Gratia", "hours"))
-        now = int(time.time()-60)
-        prev = now - 3600*hours
-        offset = prev % 3600
-        starttime = datetime.datetime(*time.gmtime(prev)[:6])
-        endtime = datetime.datetime(*time.gmtime(now)[:6])
-        return {'offset': offset, 'starttime': starttime, 'endtime': endtime,
-            'span': 3600}
+    def _timestamp_to_datetime(self, ts):
+        return datetime.datetime.gmtime(ts)
 
-    def query_users(self):
+    def determine_missing(self):
+        now = time.time()
+        hour_now = now - (now % 3600)
+        if (now-hour_now) < 15*60:
+            hour_now -= 3600
+        self.missing.add(self._timestamp_to_datetime(hour_now))
+        cur = hour_now
+        hours = int(self.cp.get("Gratia Transfer", "hours"))
+        while cur >= now - hours*3600:
+            cur -= 3600
+            cur_dt = self._timestamp_to_datetime(cur)
+            if cur_dt not in self.data:
+                self.missing.add(cur_dt)
+
+    def query_missing(self):
+        now = time.time()
+        for mtime in self.missing:
+            starttime = mtime
+            endtime = mtime + datetime.timedelta(0, 3600)
+            results = self.query_transfers(starttime, endtime)
+            for result in results:
+                time, count, volume_mb = result
+                starttime = self._timestamp_to_datetime(time)
+                if now-time >= 3600:
+                    endtime = self._timestamp_to_datetime(time+3600)
+                else:
+                    endtime = self._timestamp_to_datetime(now)
+                td = TransferData()
+                td.starttime = starttime
+                td.endtime = endtime
+                td.count = count
+                td.volume_mb = volume_mb
+                self.data[starttime] = td
+                self.save_cache
+
+    def query_transfers(self, starttime, endtime):
+        log.info("Querying Gratia Transfer DB for transfers from %s to %s." \
+            % (starttime.strftime("%Y-%m-%d %H:%M:%S"),
+            endtime.strftime("%Y-%m-%d %H:%M:%S")))
         curs = self.conn.cursor()
-        params = self.get_params()
-        curs.execute(self.users_query, params)
-        return [i[1] for i in curs.fetchall()]
+        params = {'span': 3600}
+        params['starttime'] = starttime
+        params['endtime'] = endtime
+        curs.execute(self.transfers_query, params)
+        return curs.fetchall()
+
+    def get_data(self):
+        all_times = self.data.keys()
+        all_times.sort()
+        all_times = all_times[-24:]
+        results = []
+        for time in all_times:
+            results.append(self.data[time].count, self.data[time].volume_mb)
+        return results
 
     transfers_query = """
         SELECT
           (truncate((unix_timestamp(ServerDate))/%(span)s, 0)*%(span)s) as time,
           sum(Value*SU.Multiplier) as Records
         FROM JobUsageRecord_Meta JURM
-        JOIN JobUsageRecord JUR on JURM.dbid=JUR.dbid
-        JOIN Network N on (JUR.dbid = N.dbid)
+        JOIN Network N on (JURM.dbid = N.dbid)
         JOIN SizeUnits SU on N.StorageUnit = SU.Unit
         WHERE
-          ResourceType="Storage" AND
           ServerDate >= %(starttime)s AND
           ServerDate < %(endtime)s
         GROUP BY time;
@@ -392,6 +471,10 @@ def configure():
     parser = optparse.OptionParser()
     parser.add_option("-c", "--config", help="PR Graph config file",
         dest="config")
+    parser.add_option("-q", "--quiet", help="Reduce verbosity of output",
+        dest="quiet", default=False, action="store_true")
+    parser.add_option("-d", "--debug", help="Turn on debug output",
+        dest="debug", default=False, action="store_true")
     opts, args = parser.parse_args()
 
     if not opts.config:
@@ -399,15 +482,34 @@ def configure():
         print "\nMust pass a config file."
         sys.exit(1)
 
+    log.handlers = []
+
+    if not opts.quiet:
+        handler = logging.StreamHandler(sys.stdout)
+        log.addHandler(handler)
+
+    for handler in log.handlers:
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - " \
+            "%(message)s")
+        handler.setFormatter(formatter)
+
+    if opts.debug:
+        log.setLevel(logging.DEBUG)
+
     cp = ConfigParser.ConfigParser()
     cp.readfp(open(opts.config, "r"))
+
+    logging.basicConfig(filename=cp.get("Settings", "logfile"))
+
     return cp
 
 def main():
     cp = configure()
 
     # Set the alarm in case if we go over time
-    signal.alarm(int(cp.get("Settings", "timeout")))
+    timeout = int(cp.get("Settings", "timeout"))
+    signal.alarm(timeout)
+    log.debug("Setting script timeout to %i." % timeout)
 
     # Generate the graphs
     ds = DataSource(cp)
@@ -427,6 +529,17 @@ def main():
     fd = open(tmpname, 'w')
     pr.run(fd)
     commit_files(name, tmpname)
+
+    # Generate the more-complex transfers graph
+    dst = DataSourceTransfers(cp)
+    dst.run()
+    pr = PRGraph(cp, 3)
+    pr.data = ds.get_data()
+    name, tmpname = get_files(cp, "transfers")
+    fd = open(tmpname, 'w')
+    pr.run(fd)
+    commit_files(name, tmpname)
+
 
     # Generate the JSON
     ods = OIMDataSource(cp)
