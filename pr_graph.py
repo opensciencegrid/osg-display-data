@@ -3,6 +3,7 @@ import os
 import sys
 import sets
 import time
+import pickle
 import shutil
 import signal
 import logging
@@ -101,6 +102,8 @@ class DataSource(object):
             log.exception(e)
             log.error("Unable to connect to Gratia database")
             raise
+        curs = self.conn.cursor()
+        curs.execute("set time_zone='+0:00'")
 
     def get_params(self):
         hours = int(self.cp.get("Gratia", "hours"))
@@ -118,7 +121,7 @@ class DataSource(object):
         curs.execute(self.users_query, params)
         results = [i[1] for i in curs.fetchall()]
         log.info("Gratia returned %i results for users" % len(results))
-        log.debug("Results are: %s." % ", ".join(results))
+        log.debug("Results are: %s." % ", ".join([str(i) for i in results]))
         return results
 
     def query_user_num(self):
@@ -135,7 +138,7 @@ class DataSource(object):
         curs.execute(self.jobs_query, params)
         results = [i[1]/float(params['span']/60) for i in curs.fetchall()]
         log.info("Gratia returned %i results for jobs" % len(results))
-        log.debug("Results are: %s." % ", ".join(results))
+        log.debug("Results are: %s." % ", ".join([str(i) for i in results]))
         return results
 
     jobs_query = """
@@ -235,21 +238,25 @@ class DataSourceTransfers(object):
             log.exception(e)
             log.error("Unable to connect to Gratia Transfer DB")
             raise
+        curs=self.conn.cursor()
+        curs.execute("set time_zone='+0:00'")
 
     def load_cached(self):
         try:
-            data = pickle.load(open(self.cp.get("Filenames", "transfers_data"),
+            data = pickle.load(open(self.cp.get("Filenames", "transfer_data"),
                 "r"))
             # Verify we didn't get useless data
             for time, tdata in data.items():
                 assert isinstance(time, datetime.datetime)
                 assert isinstance(tdata, TransferData)
-                assert isinstance(tdata.time, datetime.datetime)
+                assert isinstance(tdata.starttime, datetime.datetime)
+                assert isinstance(tdata.endtime, datetime.datetime)
                 assert tdata.count != None
                 assert tdata.volume_mb != None
                 assert tdata.starttime != None
-                assert tdata.endtime != None
             self.data = data
+            log.info("Successfully loaded transfer data from cache; %i" \
+                " cache entries." % len(data))
         except Exception, e:
             log.warning("Unable to load cache; it may not exist. Error: %s" % \
                str(e))
@@ -263,16 +270,17 @@ class DataSourceTransfers(object):
         for key in old_keys:
             del self.data
         try:
-            name, tmpname = get_files(self.cp, "transfers_data")
+            name, tmpname = get_files(self.cp, "transfer_data")
             fp = open(tmpname, 'w')
             pickle.dump(self.data, fp)
             fp.close()
             commit_files(name, tmpname)
+            log.debug("Saved data to cache.")
         except Exception, e:
             log.warning("Unable to write cache; message: %s" % str(e))
 
     def _timestamp_to_datetime(self, ts):
-        return datetime.datetime.gmtime(ts)
+        return datetime.datetime(*time.gmtime(ts)[:6])
 
     def determine_missing(self):
         now = time.time()
@@ -290,24 +298,31 @@ class DataSourceTransfers(object):
 
     def query_missing(self):
         now = time.time()
+        log.info("Querying %i missing data entries." % len(self.missing))
         for mtime in self.missing:
             starttime = mtime
             endtime = mtime + datetime.timedelta(0, 3600)
             results = self.query_transfers(starttime, endtime)
+            if not results:
+                log.warning("No transfer results found for %s." % starttime)
             for result in results:
-                time, count, volume_mb = result
-                starttime = self._timestamp_to_datetime(time)
-                if now-time >= 3600:
-                    endtime = self._timestamp_to_datetime(time+3600)
+                res_time, count, volume_mb = result
+                res_time = float(res_time)
+                starttime = self._timestamp_to_datetime(res_time)
+                if now-res_time >= 3600:
+                    endtime = self._timestamp_to_datetime(res_time+3600)
                 else:
                     endtime = self._timestamp_to_datetime(now)
+                if res_time > now:
+                    continue
                 td = TransferData()
                 td.starttime = starttime
                 td.endtime = endtime
                 td.count = count
                 td.volume_mb = volume_mb
                 self.data[starttime] = td
-                self.save_cache
+                log.debug("Successfully parsed results for %s." % starttime)
+                self.save_cache()
 
     def query_transfers(self, starttime, endtime):
         log.info("Querying Gratia Transfer DB for transfers from %s to %s." \
@@ -326,13 +341,27 @@ class DataSourceTransfers(object):
         all_times = all_times[-24:]
         results = []
         for time in all_times:
-            results.append(self.data[time].count, self.data[time].volume_mb)
+            results.append((self.data[time].count, self.data[time].volume_mb))
         return results
+
+    def get_rates(self):
+        all_times = self.data.keys()
+        all_times.sort()
+        all_times = all_times[-24:]
+        results = []
+        for time in all_times:
+            td = self.data[time]
+            interval = td.endtime - td.starttime
+            interval_s = interval.days*86400 + interval.seconds
+            results.append(td.volume_mb/interval_s)
+        return results
+
 
     transfers_query = """
         SELECT
           (truncate((unix_timestamp(ServerDate))/%(span)s, 0)*%(span)s) as time,
-          sum(Value*SU.Multiplier) as Records
+          count(*) as Records,
+          sum(Value*SU.Multiplier) as SizeMB
         FROM JobUsageRecord_Meta JURM
         JOIN Network N on (JURM.dbid = N.dbid)
         JOIN SizeUnits SU on N.StorageUnit = SU.Unit
@@ -534,7 +563,8 @@ def main():
     dst = DataSourceTransfers(cp)
     dst.run()
     pr = PRGraph(cp, 3)
-    pr.data = ds.get_data()
+    pr.data = [i/1024. for i in dst.get_rates()]
+    log.debug("Transfer rates: %s" % ", ".join([str(i) for i in pr.data]))
     name, tmpname = get_files(cp, "transfers")
     fd = open(tmpname, 'w')
     pr.run(fd)
