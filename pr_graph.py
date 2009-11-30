@@ -268,7 +268,7 @@ class DataSourceTransfers(object):
             if (now - key).days >= 2:
                 old_keys.append(key)
         for key in old_keys:
-            del self.data
+            del self.data[key]
         try:
             name, tmpname = get_files(self.cp, "transfer_data")
             fp = open(tmpname, 'w')
