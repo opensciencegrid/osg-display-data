@@ -1,0 +1,7 @@
+#!/usr/bin/python
+
+import osg_display.osg_display
+
+if __name__ == '__main__':
+    osg_display.osg_display.main()
+
