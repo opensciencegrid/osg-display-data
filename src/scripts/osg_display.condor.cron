@@ -1,0 +1,14 @@
+Notification = never
+DeferralTime = (CurrentTime + 300 - 15 + random(30))
+DeferralWindow = 99999999
+DeferralPrepTime = 180
+PeriodicRelease = (HoldReasonCode =!= 1) && ((CurrentTime - EnteredCurrentStatus) > 60)
+Universe=local
+Executable=/usr/bin/osg_display
+Log = /var/log/osg_display/osg_display.condor.log.$(Cluster).$(Process)
+Output = /var/log/osg_display/osg_display.condor.out.$(Cluster).$(Process)
+Error = /var/log/osg_display/osg_display.condor.out.$(Cluster).$(Process)
+Arguments = --checkpoint_url $$([CHECKPOINT]) --checkpoint_interval $$([CHECKPOINT_INTERVAL]) --boinc_binary $$([BOINC_BINARY]) --project_url $$([PROJECT]) --key $$([KEY]) --vo $$([VO]) --lifetime $$([LIFETIME]) --global_id $(Cluster).$(Process)
+OnExitRemove=FALSE
+periodic_hold=(JobStatus==2) && (CurrentTime - EnteredCurrentStatus > 120)
+queue 1
