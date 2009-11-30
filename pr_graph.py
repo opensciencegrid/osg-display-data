@@ -471,6 +471,8 @@ class PRData(object):
         self.num_users = 0
         self.num_ces = 0
         self.num_ses = 0
+        self.transfer_volume_mb = 0
+        self.num_transfers = 0
 
     def set_num_sites(self, num_sites):
         self.num_sites = num_sites
@@ -487,6 +489,12 @@ class PRData(object):
     def set_num_ses(self, num_ses):
         self.num_ses = num_ses
 
+    def set_num_transfers(self, num_transfers):
+        self.num_transfers = num_transfers
+
+    def set_transfer_volume_mb(self, transfer_volume_mb):
+        self.transfer_volume_mb = transfer_volume_mb
+
     def run(self, fp):
         info = {}
         info['time'] = int(time.time())
@@ -495,6 +503,8 @@ class PRData(object):
         info['num_sites'] = int(self.num_sites)
         info['num_ces'] = int(self.num_ces)
         info['num_ses'] = int(self.num_ses)
+        info['num_transfers'] = int(self.num_transfers)
+        info['transfer_volume_mb'] = int(self.transfer_volume_mb)
         fp.write(str(info))
         fp.flush()
         fp.close()
@@ -574,7 +584,9 @@ def main():
     fd = open(tmpname, 'w')
     pr.run(fd)
     commit_files(name, tmpname)
-
+    transfer_data = dst.get_data()
+    num_transfers = sum([i[0] for i in transfer_data])
+    transfer_volume_mb = sum([i[1] for i in transfer_data])
 
     # Generate the JSON
     ods = OIMDataSource(cp)
@@ -585,6 +597,8 @@ def main():
     ces, ses = ods.query_ce_se()
     prd.set_num_ces(ces)
     prd.set_num_ses(ses)
+    prd.set_num_transfers(num_transfers)
+    prd.set_transfer_volume_mb(transfer_volume_mb)
 
     name, tmpname = get_files(cp, "json")
     fd = open(tmpname, 'w')
