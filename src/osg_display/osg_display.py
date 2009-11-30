@@ -17,7 +17,9 @@ from xml.dom.minidom import parse
 
 import Image
 import MySQLdb
+import matplotlib
 import matplotlib.figure
+import matplotlib.font_manager
 import matplotlib.backends.backend_svg
 import matplotlib.backends.backend_agg
 
@@ -215,6 +217,7 @@ def get_files(cp, config_name):
 def commit_files(name, tmpname):
     log.debug("Overwriting %s with %s." % (name, tmpname))
     try:
+        os.chmod(tmpname, 0644)
         shutil.move(tmpname, name)
     except Exception, e:
         log.exception(e)
@@ -388,6 +391,14 @@ class PRGraph(object):
         self.cp = cp
         self.num = graph_num
         self.svg = self.cp.get("Settings", "output_svg").lower() != "false"
+        font_list = [i.strip() for i in self.cp.get("Settings", "Font").\
+            split(",")]
+        #if 'font.sans-serif' in matplotlib.rcParams:
+        #    font_list = font_list + matplotlib.rcParams['font.sans-serif']
+        matplotlib.rcParams['font.family'] = 'sans-serif'
+        matplotlib.rcParams['font.sans-serif'] = font_list
+        fm = matplotlib.font_manager.FontManager()
+        prop = matplotlib.font_manager.FontProperties()
 
     def build_canvas(self):
         ylabel = self.cp.get("Labels", "YLabel%i" % self.num)
@@ -452,7 +463,7 @@ class PRGraph(object):
         self.ax.set_ylim(-0.5, max_ax)
         self.ax.set_xlim(-1, data_len)
         legend = self.ax.legend(loc=9, mode="expand",
-            bbox_to_anchor=(0.5, 1.02, 1., .102))
+            bbox_to_anchor=(0.25, 1.02, 1., .102))
         setp(legend.get_frame(), visible=False)
         setp(legend.get_texts(), size=int(self.cp.get("Sizes", "LegendSize")))
 
