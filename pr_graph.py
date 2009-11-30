@@ -37,7 +37,8 @@ class OIMDataSource(object):
     resource_group_url = 'http://myosg.grid.iu.edu/rgsummary/xml?datasource=' \
         'summary&all_resources=on&gridtype=on&gridtype_1=on&active=on&' \
         'active_value=1&disable=on&disable_value=0&' \
-        'summary_attrs_showhierarchy=on&summary_attrs_showservice=on'
+        'summary_attrs_showhierarchy=on&summary_attrs_showservice=on' \
+        '&service=on&service_1=on&service_5=on&service_2=on&service_3=on'
 
     def query_sites(self):
         fd = urllib2.urlopen(self.resource_group_url)
@@ -50,15 +51,17 @@ class OIMDataSource(object):
                 except:
                     pass
         log.debug("OIM returned the following sites: %s" % ", ".join(sites))
+        log.info("OIM has %i registered sites." % len(sites))
         return sites
 
     def query_ce_se(self):
-        
+        log.debug("Querying the following MyOSG URL: %s" % \
+            self.resource_group_url)
         fd = urllib2.urlopen(self.resource_group_url)
         dom = parse(fd)
         ses = sets.Set()
         ces = sets.Set()
-        for service_dom in dom.getElementsByTagName("Services"):
+        for service_dom in dom.getElementsByTagName("Service"):
             service_type = None
             for name_dom in service_dom.getElementsByTagName("Name"):
                 try:
@@ -76,6 +79,8 @@ class OIMDataSource(object):
                     ses.add(uri)
                 elif service_type == 'CE':
                     ces.add(uri)
+        log.debug("OIM returned the following CEs: %s." % ", ".join(ces))
+        log.debug("OIM returned the following SEs: %s." % ", ".join(ses))
         log.info("OIM returned %i CEs and %i SEs" % (len(ces), len(ses)))
         return len(ces), len(ses)
 
