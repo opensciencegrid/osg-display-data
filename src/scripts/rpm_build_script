@@ -1,0 +1,6 @@
+#!/bin/sh
+
+python setup.py bdist
+cp dist/OSG_Display_Data-0.1.tar.gz `rpm -E '%{_sourcedir}'`
+rpmbuild -ba config/OSG_Display_Data.spec
+

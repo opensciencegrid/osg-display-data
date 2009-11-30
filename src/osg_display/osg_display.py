@@ -382,10 +382,11 @@ class PRGraph(object):
     def __init__(self, cp, graph_num):
         self.cp = cp
         self.num = graph_num
+        self.svg = self.cp.get("settings", "output_svg").lower() != "false"
 
     def build_canvas(self):
         ylabel = self.cp.get("Labels", "YLabel%i" % self.num)
-        if False:
+        if self.svg:
             FigureCanvas = matplotlib.backends.backend_svg.FigureCanvasSVG
         else:
             FigureCanvas = matplotlib.backends.backend_agg.FigureCanvasAgg
@@ -420,7 +421,7 @@ class PRGraph(object):
 
     def write_graph(self):
         self.canvas.draw()
-        if False:
+        if self.svg:
             renderer = matplotlib.backends.backend_svg.RendererSVG( \
                 self.width, self.height, self.file)
             self.canvas.figure.draw(renderer)
