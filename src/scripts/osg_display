@@ -1,5 +1,12 @@
 #!/usr/bin/python
 
+import os
+if 'MPLCONFIGDIR' not in os.environ:
+    path = '/tmp/osg_display_mplcache_u%s' % os.geteuid()
+    if not os.path.exists(path):
+        os.makedirs(path)
+    os.environ['MPLCONFIGDIR'] = path
+
 import osg_display.osg_display
 
 if __name__ == '__main__':

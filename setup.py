@@ -11,8 +11,9 @@ setup(name="OSG_Display_Data",
       packages=["osg_display"],
 
       data_files=[("/etc/cron.d", ["src/scripts/osg_display.cron"]),
-          ("/etc/osg_display", ["config/graphs.conf", "src/script/osg_display.condor.cron"]),
-          ("/usr/bin", ["src/scripts/osg_display"])],
+          ("/etc/osg_display", ["config/osg_display.conf", "src/scripts/osg_display.condor.cron"]),
+          ("/usr/bin", ["src/scripts/osg_display"]),
+          ("/etc/logrotate.d", ["src/scripts/osg_display_logrotate"]),],
 
      )
 

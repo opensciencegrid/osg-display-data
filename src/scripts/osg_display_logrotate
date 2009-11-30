@@ -1,0 +1,5 @@
+/var/log/osg_display/osg_display.log {
+    missingok
+    notifempty
+    sharedscripts
+}

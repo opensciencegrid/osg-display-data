@@ -26,6 +26,11 @@ python setup.py build
 
 %install
 python setup.py install --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
+#mkdir -p $RPM_BUILD_ROOT/etc/osg_display
+#cp config/osg_display.conf $RPM_BUILD_ROOT/etc/osg_display
+#cp src/scripts/osg_display.condor.cron $RPM_BUILD_ROOT/etc/osg_display
+mkdir -p $RPM_BUILD_ROOT/var/log/osg_display
+mkdir -p $RPM_BUILD_ROOT/var/www/html/osg_display
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -33,5 +38,7 @@ rm -rf $RPM_BUILD_ROOT
 %files -f INSTALLED_FILES
 %defattr(-,root,root)
 %attr(-, daemon, daemon) /var/log/osg_display
-%config /etc/osg_display/graphs.conf
+%attr(-, daemon, daemon) /var/www/html/osg_display
+%config %attr(600, daemon, daemon) /etc/osg_display/osg_display.conf
 %config /etc/osg_display/osg_display.condor.cron
+

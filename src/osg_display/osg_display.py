@@ -28,6 +28,7 @@ dpi = 72
 logging.basicConfig()
 log = logging.getLogger()
 log.setLevel(logging.INFO)
+_euid = os.geteuid()
 
 class OIMDataSource(object):
 
@@ -202,6 +203,10 @@ class TransferData(object):
 
 def get_files(cp, config_name):
     name = cp.get("Filenames", config_name)
+    try:
+        name = name % {'uid': _euid}
+    except:
+        raise
     fd, tmpname = tempfile.mkstemp(prefix="osg_display")
     os.close(fd)
     log.debug("Using temporary file %s for %s" % (tmpname, config_name))
@@ -248,8 +253,8 @@ class DataSourceTransfers(object):
 
     def load_cached(self):
         try:
-            data = pickle.load(open(self.cp.get("Filenames", "transfer_data"),
-                "r"))
+            data = pickle.load(open(self.cp.get("Filenames", "transfer_data") \
+                % {'uid': _euid}, "r"))
             # Verify we didn't get useless data
             for time, tdata in data.items():
                 assert isinstance(time, datetime.datetime)
@@ -382,7 +387,7 @@ class PRGraph(object):
     def __init__(self, cp, graph_num):
         self.cp = cp
         self.num = graph_num
-        self.svg = self.cp.get("settings", "output_svg").lower() != "false"
+        self.svg = self.cp.get("Settings", "output_svg").lower() != "false"
 
     def build_canvas(self):
         ylabel = self.cp.get("Labels", "YLabel%i" % self.num)
@@ -515,7 +520,7 @@ def configure():
     usage = "usage: %prog -c config_file"
     parser = optparse.OptionParser()
     parser.add_option("-c", "--config", help="PR Graph config file",
-        dest="config")
+        dest="config", default="/etc/osg_display/osg_display.conf")
     parser.add_option("-q", "--quiet", help="Reduce verbosity of output",
         dest="quiet", default=False, action="store_true")
     parser.add_option("-d", "--debug", help="Turn on debug output",
@@ -541,7 +546,9 @@ def configure():
     if opts.debug:
         log.setLevel(logging.DEBUG)
 
-    cp = ConfigParser.ConfigParser()
+    log.info("Reading from log file %s." % opts.config)
+
+    cp = ConfigParser.SafeConfigParser()
     cp.readfp(open(opts.config, "r"))
 
     logging.basicConfig(filename=cp.get("Settings", "logfile"))
