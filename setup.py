@@ -8,10 +8,10 @@ setup(name="OSG_Display_Data",
       description="Scripts and tools to generate the OSG Display's data.",
 
       package_dir={"": "src"},
-      packages=["osg_display"]
+      packages=["osg_display"],
 
       data_files=[("/etc/cron.d", ["src/scripts/osg_display.cron"]),
-          ("/etc", ["config/osg_display.conf.rpmnew"]),
+          ("/etc/osg_display", ["config/graphs.conf", "src/script/osg_display.condor.cron"]),
           ("/usr/bin", ["src/scripts/osg_display"])],
 
      )
