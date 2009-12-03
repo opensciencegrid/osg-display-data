@@ -357,7 +357,7 @@ class DataSourceTransfers(object):
             results.append((self.data[time].count, self.data[time].volume_mb))
         return results
 
-    def get_rates(self):
+    def get_volume_rates(self):
         all_times = self.data.keys()
         all_times.sort()
         all_times = all_times[-24:]
@@ -367,6 +367,18 @@ class DataSourceTransfers(object):
             interval = td.endtime - td.starttime
             interval_s = interval.days*86400 + interval.seconds
             results.append(td.volume_mb/interval_s)
+        return results
+
+    def get_rates(self):
+        all_times = self.data.keys()
+        all_times.sort()
+        all_times = all_times[-24:]
+        results = []
+        for time in all_times:
+            td = self.data[time]
+            interval = td.endtime - td.starttime
+            interval_s = interval.days*86400 + interval.seconds
+            results.append(td.count/float(interval_s))
         return results
 
 
@@ -399,6 +411,7 @@ class PRGraph(object):
         matplotlib.rcParams['font.sans-serif'] = font_list
         fm = matplotlib.font_manager.FontManager()
         prop = matplotlib.font_manager.FontProperties()
+        self.legend = self.cp.get("Labels", "Legend").lower() == "true"
 
     def build_canvas(self):
         ylabel = self.cp.get("Labels", "YLabel%i" % self.num)
@@ -417,7 +430,16 @@ class PRGraph(object):
         fig.set_size_inches(width_inches, height_inches)
         fig.set_dpi(dpi)
         fig.set_facecolor('white')
-        ax_rect = (.11, 0.06, .89, .85)
+        if self.legend:
+            ax_rect = (.11, 0.06, .89, .85)
+        else:
+            label_len = len(ylabel)
+            extra = label_len*.006
+            if label_len > 5:
+                extra += .01
+            if label_len < 5:
+                extra -= .025
+            ax_rect = (.09+extra, 0.06, .91-extra, .90)
         ax = fig.add_axes(ax_rect)
         frame = ax.patch
         frame.set_fill(False)
@@ -425,8 +447,10 @@ class PRGraph(object):
 
         ax.set_frame_on(False)
         ax.get_xaxis().set_visible(False)
-        ylabel = ax.set_ylabel(ylabel)
-        ylabel.set_size(int(self.cp.get("Sizes", "YLabelSize")))
+        if ylabel:
+            ylabel = ax.set_ylabel(ylabel)
+            ylabel.set_size(int(self.cp.get("Sizes", "YLabelSize")))
+            ylabel.set_rotation("horizontal")
         setp(ax.get_yticklabels(), size=int(self.cp.get("Sizes", "YTickSize")))
         setp(ax.get_ygridlines(), linestyle='-')
         setp(ax.get_yticklines(), visible=False)
@@ -462,10 +486,12 @@ class PRGraph(object):
         max_ax = max(self.data)*1.1
         self.ax.set_ylim(-0.5, max_ax)
         self.ax.set_xlim(-1, data_len)
-        legend = self.ax.legend(loc=9, mode="expand",
-            bbox_to_anchor=(0.25, 1.02, 1., .102))
-        setp(legend.get_frame(), visible=False)
-        setp(legend.get_texts(), size=int(self.cp.get("Sizes", "LegendSize")))
+
+        if self.legend:
+            legend = self.ax.legend(loc=9, mode="expand",
+                bbox_to_anchor=(0.25, 1.02, 1., .102))
+            setp(legend.get_frame(), visible=False)
+            setp(legend.get_texts(), size=int(self.cp.get("Sizes", "LegendSize")))
 
     def parse_data(self):
         pass
@@ -490,6 +516,9 @@ class PRData(object):
         self.num_ses = 0
         self.transfer_volume_mb = 0
         self.num_transfers = 0
+        self.transfer_volume_rate = 0
+        self.transfer_rate = 0
+        self.jobs_rate = 0
 
     def set_num_sites(self, num_sites):
         self.num_sites = num_sites
@@ -512,6 +541,15 @@ class PRData(object):
     def set_transfer_volume_mb(self, transfer_volume_mb):
         self.transfer_volume_mb = transfer_volume_mb
 
+    def set_jobs_rate(self, jobs_rate):
+        self.jobs_rate = jobs_rate
+
+    def set_transfer_volume_rate(self, transfer_volume_rate):
+        self.transfer_volume_rate = transfer_volume_rate
+
+    def set_transfer_rate(self, transfer_rate):
+        self.transfer_rate = transfer_rate
+
     def run(self, fp):
         info = {}
         info['time'] = int(time.time())
@@ -522,6 +560,9 @@ class PRData(object):
         info['num_ses'] = int(self.num_ses)
         info['num_transfers'] = int(self.num_transfers)
         info['transfer_volume_mb'] = int(self.transfer_volume_mb)
+        info['transfer_volume_rate'] = float(self.transfer_volume_rate)
+        info['transfer_rate'] = float(self.transfer_rate)
+        info['jobs_rate'] = float(self.jobs_rate)
         fp.write(str(info))
         fp.flush()
         fp.close()
@@ -578,7 +619,8 @@ def main():
     ds = DataSource(cp)
     ds.run()
     pr = PRGraph(cp, 1)
-    pr.data = ds.query_jobs()
+    jobs_data = ds.query_jobs()
+    pr.data = jobs_data
     num_jobs = sum(pr.data)*60
 
     name, tmpname = get_files(cp, "jobs")
@@ -597,7 +639,7 @@ def main():
     dst = DataSourceTransfers(cp)
     dst.run()
     pr = PRGraph(cp, 3)
-    pr.data = [i/1024. for i in dst.get_rates()]
+    pr.data = [i/1024. for i in dst.get_volume_rates()]
     log.debug("Transfer rates: %s" % ", ".join([str(i) for i in pr.data]))
     name, tmpname = get_files(cp, "transfers")
     fd = open(tmpname, 'w')
@@ -618,6 +660,9 @@ def main():
     prd.set_num_ses(ses)
     prd.set_num_transfers(num_transfers)
     prd.set_transfer_volume_mb(transfer_volume_mb)
+    prd.set_transfer_volume_rate([i for i in dst.get_volume_rates()][-1])
+    prd.set_jobs_rate(jobs_data[-1]/60.)
+    prd.set_transfer_rate([i for i in dst.get_rates()][-1])
 
     name, tmpname = get_files(cp, "json")
     fd = open(tmpname, 'w')
