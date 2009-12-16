@@ -1,5 +1,5 @@
 %define name OSG_Display_Data
-%define version 0.3
+%define version 0.4
 %define release 1
 
 Summary: Scripts and tools to generate the OSG Display's data.
@@ -13,7 +13,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Prefix: %{_prefix}
 BuildArch: noarch
 Vendor: Brian Bockelman <bbockelm@cse.unl.edu>
-Requires: MySQL-python matplotlib >= 0.99
+Requires: MySQL-python matplotlib >= 0.99 numpy >= 1.1.1
 
 %description
 UNKNOWN

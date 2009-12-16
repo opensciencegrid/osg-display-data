@@ -1,0 +1,15 @@
+
+To build:
+
+1) Make sure the rpm development tools are installed on the machine (the binary "rpmbuild" should be in your path).
+   * If you've never built RPMs on this machine, the default destination directory is in /usr/src, which you probably don't have write access to.  You can set up an RPM environment in your home directory by doing the following:
+
+mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+echo "%_topdir /home/brian/rpmbuild" >> ~/.rpmmacros
+
+2) Update the version number in the following three files to be consistent:
+   * src/scripts/rpm_build_script
+   * config/OSG_Display_Data.spec
+   * setup.py 
+3) Run the build script, ./src/scripts/rpm_build_script.  Upon a successful build, the output RPM will be copied to the dist/ directory.
+

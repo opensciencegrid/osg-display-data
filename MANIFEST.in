@@ -1,3 +1,2 @@
 include src/scripts/*
 include config/*
-include content/*

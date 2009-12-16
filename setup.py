@@ -2,7 +2,7 @@
 from distutils.core import setup
 
 setup(name="OSG_Display_Data",
-      version="0.3",
+      version="0.4",
       author="Brian Bockelman",
       author_email="bbockelm@cse.unl.edu",
       description="Scripts and tools to generate the OSG Display's data.",
@@ -14,7 +14,6 @@ setup(name="OSG_Display_Data",
           ("/etc/osg_display", ["config/osg_display.conf", "src/scripts/osg_display.condor.cron"]),
           ("/usr/bin", ["src/scripts/osg_display"]),
           ("/etc/logrotate.d", ["src/scripts/osg_display_logrotate"]),
-          ("/var/www/html/osg_display", ["content/content.php"]),
         ],
 
      )
