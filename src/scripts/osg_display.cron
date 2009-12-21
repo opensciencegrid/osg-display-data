@@ -1,1 +1,1 @@
-*/5 * * * * daemon osg_display -q
+*/5 * * * * apache osg_display -q

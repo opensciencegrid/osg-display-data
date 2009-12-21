@@ -1,5 +1,5 @@
 %define name OSG_Display_Data
-%define version 0.4
+%define version 0.7
 %define release 1
 
 Summary: Scripts and tools to generate the OSG Display's data.
@@ -37,8 +37,8 @@ rm -rf $RPM_BUILD_ROOT
 
 %files -f INSTALLED_FILES
 %defattr(-,root,root)
-%attr(-, daemon, daemon) /var/log/osg_display
-%attr(-, daemon, daemon) /var/www/html/osg_display
-%config %attr(600, daemon, daemon) /etc/osg_display/osg_display.conf
+%attr(-, apache, apache) /var/log/osg_display
+%attr(-, apache, apache) /var/www/html/osg_display
+%config %attr(600, apache, apache) /etc/osg_display/osg_display.conf
 %config /etc/osg_display/osg_display.condor.cron
 

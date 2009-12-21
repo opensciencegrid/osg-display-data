@@ -438,7 +438,7 @@ class PRGraph(object):
             if label_len > 5:
                 extra += .01
             if label_len < 5:
-                extra -= .025
+                extra -= .02
             ax_rect = (.09+extra, 0.06, .91-extra, .90)
         ax = fig.add_axes(ax_rect)
         frame = ax.patch
@@ -484,7 +484,10 @@ class PRGraph(object):
             markeredgewidth=5, color=color, label=self.cp.get("Labels",
             "Legend%i" % self.num))
         max_ax = max(self.data)*1.1
-        self.ax.set_ylim(-0.5, max_ax)
+        if max_ax <= 10:
+            self.ax.set_ylim(-0.1, max_ax)
+        else:
+            self.ax.set_ylim(-0.5, max_ax)
         self.ax.set_xlim(-1, data_len)
 
         if self.legend:
@@ -598,12 +601,18 @@ def configure():
     if opts.debug:
         log.setLevel(logging.DEBUG)
 
-    log.info("Reading from log file %s." % opts.config)
+    if not opts.quiet:
+        log.info("Reading from log file %s." % opts.config)
 
     cp = ConfigParser.SafeConfigParser()
     cp.readfp(open(opts.config, "r"))
 
     logging.basicConfig(filename=cp.get("Settings", "logfile"))
+
+    for handler in log.handlers:
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - " \
+            "%(message)s")
+        handler.setFormatter(formatter)
 
     return cp
 
