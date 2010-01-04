@@ -19,6 +19,7 @@ import Image
 import MySQLdb
 import matplotlib
 import matplotlib.figure
+import matplotlib.text
 import matplotlib.font_manager
 import matplotlib.backends.backend_svg
 import matplotlib.backends.backend_agg
@@ -114,7 +115,7 @@ class DataSource(object):
         curs.execute("set time_zone='+0:00'")
 
     def get_params(self):
-        hours = int(self.cp.get("Gratia", "hours"))
+        hours = int(int(self.cp.get("Gratia", "hours"))*1.5)
         now = int(time.time()-60)
         prev = now - 3600*hours
         offset = prev % 3600
@@ -144,17 +145,20 @@ class DataSource(object):
         curs = self.conn.cursor()
         params = self.get_params()
         curs.execute(self.jobs_query, params)
-        results = [i[1]/float(params['span']/60) for i in curs.fetchall()]
+        results = [i[1] for i in curs.fetchall()]
         log.info("Gratia returned %i results for jobs" % len(results))
         log.debug("Results are: %s." % ", ".join([str(i) for i in results]))
+        num_results = int(self.cp.get("Gratia", "hours"))
+        results = results[-num_results:]
         return results
 
     jobs_query = """
         SELECT
-          (truncate((unix_timestamp(ServerDate)-%(offset)s)/%(span)s, 0)*
+          (truncate((unix_timestamp(JUR.EndTime)-%(offset)s)/%(span)s, 0)*
             %(span)s) as time,
           count(*) as Records
         FROM JobUsageRecord_Meta 
+        JOIN JobUsageRecord JUR ON JUR.dbid=JobUsageRecord_Meta.dbid
         WHERE
           ServerDate >= %(starttime)s AND
           ServerDate < %(endtime)s
@@ -439,7 +443,10 @@ class PRGraph(object):
                 extra += .01
             if label_len < 5:
                 extra -= .02
-            ax_rect = (.09+extra, 0.06, .91-extra, .90)
+            extra = 0.0
+            ax_rect = (.05+extra, 0.02, .91-extra, .91)
+        left, right, top, bottom = ax_rect[0], ax_rect[0] + ax_rect[2], \
+            ax_rect[1]+ax_rect[3]+.07, ax_rect[1]
         ax = fig.add_axes(ax_rect)
         frame = ax.patch
         frame.set_fill(False)
@@ -448,9 +455,12 @@ class PRGraph(object):
         ax.set_frame_on(False)
         ax.get_xaxis().set_visible(False)
         if ylabel:
-            ylabel = ax.set_ylabel(ylabel)
-            ylabel.set_size(int(self.cp.get("Sizes", "YLabelSize")))
-            ylabel.set_rotation("horizontal")
+            #ylabel_obj = ax.set_ylabel(ylabel)
+            #ylabel_obj.set_size(int(self.cp.get("Sizes", "YLabelSize")))
+            #ylabel_obj.set_rotation("horizontal")
+            ylabel_obj = ax.text(-.05, top, ylabel, horizontalalignment='left',
+                verticalalignment='bottom', transform=ax.transAxes)
+            ylabel_obj.set_size(int(self.cp.get("Sizes", "YLabelSize")))
         setp(ax.get_yticklabels(), size=int(self.cp.get("Sizes", "YTickSize")))
         setp(ax.get_ygridlines(), linestyle='-')
         setp(ax.get_yticklines(), visible=False)
@@ -629,8 +639,8 @@ def main():
     ds.run()
     pr = PRGraph(cp, 1)
     jobs_data = ds.query_jobs()
-    pr.data = jobs_data
-    num_jobs = sum(pr.data)*60
+    pr.data = [i/1000 for i in jobs_data]
+    num_jobs = sum(jobs_data)
 
     name, tmpname = get_files(cp, "jobs")
     fd = open(tmpname, 'w')
@@ -648,8 +658,8 @@ def main():
     dst = DataSourceTransfers(cp)
     dst.run()
     pr = PRGraph(cp, 3)
-    pr.data = [i/1024. for i in dst.get_volume_rates()]
-    log.debug("Transfer rates: %s" % ", ".join([str(i) for i in pr.data]))
+    pr.data = [i[1]/1024./1024. for i in dst.get_data()]
+    log.debug("Transfer volumes: %s" % ", ".join([str(i) for i in pr.data]))
     name, tmpname = get_files(cp, "transfers")
     fd = open(tmpname, 'w')
     pr.run(fd)
@@ -670,7 +680,7 @@ def main():
     prd.set_num_transfers(num_transfers)
     prd.set_transfer_volume_mb(transfer_volume_mb)
     prd.set_transfer_volume_rate([i for i in dst.get_volume_rates()][-1])
-    prd.set_jobs_rate(jobs_data[-1]/60.)
+    prd.set_jobs_rate(jobs_data[-1])
     prd.set_transfer_rate([i for i in dst.get_rates()][-1])
 
     name, tmpname = get_files(cp, "json")
