@@ -23,6 +23,7 @@ import matplotlib.text
 import matplotlib.font_manager
 import matplotlib.backends.backend_svg
 import matplotlib.backends.backend_agg
+import matplotlib.ticker as ticker
 
 from matplotlib.pylab import setp
 from mpl_toolkits.axes_grid.parasite_axes import HostAxes, ParasiteAxes
@@ -145,24 +146,35 @@ class DataSource(object):
         curs = self.conn.cursor()
         params = self.get_params()
         curs.execute(self.jobs_query, params)
-        results = [i[1] for i in curs.fetchall()]
-        log.info("Gratia returned %i results for jobs" % len(results))
-        log.debug("Results are: %s." % ", ".join([str(i) for i in results]))
+        results = curs.fetchall()
+        all_results = [(i[1], i[2]) for i in results]
+        log.info("Gratia returned %i results for jobs" % len(all_results))
+        log.debug("Job result dump:")
+        for i in results:
+            count, hrs = i[1:]
+            time_tuple = time.gmtime(i[0])
+            time_str = time.strftime("%Y-%m-%d %H:%M", time_tuple)
+            log.debug("Time %s: Count %i, Hours %.2f" % (time_str, count, hrs))
+        count_results = [i[0] for i in all_results]
+        hour_results = [i[1] for i in all_results]
         num_results = int(self.cp.get("Gratia", "hours"))
-        results = results[-num_results:]
-        return results
+        count_results = count_results[-num_results-1:-1]
+        hour_results = hour_results[-num_results-1:-1]
+        return count_results, hour_results
 
     jobs_query = """
         SELECT
           (truncate((unix_timestamp(JUR.EndTime)-%(offset)s)/%(span)s, 0)*
             %(span)s) as time,
-          count(*) as Records
+          count(*) as Records,
+          sum(WallDuration)/3600 as Hours
         FROM JobUsageRecord_Meta 
         JOIN JobUsageRecord JUR ON JUR.dbid=JobUsageRecord_Meta.dbid
         WHERE
           ServerDate >= %(starttime)s AND
-          ServerDate < %(endtime)s
-        GROUP BY time;
+          ServerDate < %(endtime)s AND
+          JUR.EndTime < %(endtime)s
+        GROUP BY time
         """
 
     users_query = """
@@ -207,12 +219,15 @@ class TransferData(object):
         self.volume_mb = None
 
 
-def get_files(cp, config_name):
+def get_files(cp, config_name, format=None):
     name = cp.get("Filenames", config_name)
     try:
         name = name % {'uid': _euid}
     except:
         raise
+    if format:
+        name = name.split(".")
+        name = ".".join(name[:-1]) + "." + format.lower()
     fd, tmpname = tempfile.mkstemp(prefix="osg_display")
     os.close(fd)
     log.debug("Using temporary file %s for %s" % (tmpname, config_name))
@@ -355,7 +370,7 @@ class DataSourceTransfers(object):
     def get_data(self):
         all_times = self.data.keys()
         all_times.sort()
-        all_times = all_times[-24:]
+        all_times = all_times[-26:-1]
         results = []
         for time in all_times:
             results.append((self.data[time].count, self.data[time].volume_mb))
@@ -364,7 +379,7 @@ class DataSourceTransfers(object):
     def get_volume_rates(self):
         all_times = self.data.keys()
         all_times.sort()
-        all_times = all_times[-24:]
+        all_times = all_times[-26:-1]
         results = []
         for time in all_times:
             td = self.data[time]
@@ -376,7 +391,7 @@ class DataSourceTransfers(object):
     def get_rates(self):
         all_times = self.data.keys()
         all_times.sort()
-        all_times = all_times[-24:]
+        all_times = all_times[-26:-1]
         results = []
         for time in all_times:
             td = self.data[time]
@@ -401,12 +416,13 @@ class DataSourceTransfers(object):
         """
 
 
-class PRGraph(object):
+class DisplayGraph(object):
 
     def __init__(self, cp, graph_num):
         self.cp = cp
         self.num = graph_num
-        self.svg = self.cp.get("Settings", "output_svg").lower() != "false"
+        self.format = self.cp.get("Settings", "graph_output").split(",")
+        self.format = [i.strip() for i in self.format]
         font_list = [i.strip() for i in self.cp.get("Settings", "Font").\
             split(",")]
         #if 'font.sans-serif' in matplotlib.rcParams:
@@ -417,9 +433,11 @@ class PRGraph(object):
         prop = matplotlib.font_manager.FontProperties()
         self.legend = self.cp.get("Labels", "Legend").lower() == "true"
 
-    def build_canvas(self):
+        self.num_points = 24
+
+    def build_canvas(self, format="SVG"):
         ylabel = self.cp.get("Labels", "YLabel%i" % self.num)
-        if self.svg:
+        if format=="SVG" and "SVG" in self.format:
             FigureCanvas = matplotlib.backends.backend_svg.FigureCanvasSVG
         else:
             FigureCanvas = matplotlib.backends.backend_agg.FigureCanvasAgg
@@ -444,16 +462,21 @@ class PRGraph(object):
             if label_len < 5:
                 extra -= .02
             extra = 0.0
-            ax_rect = (.05+extra, 0.02, .91-extra, .91)
+            ax_rect = (.05+extra, 0.06, .91-extra, .86)
         left, right, top, bottom = ax_rect[0], ax_rect[0] + ax_rect[2], \
-            ax_rect[1]+ax_rect[3]+.07, ax_rect[1]
+            ax_rect[1]+ax_rect[3]+.10, ax_rect[1]
         ax = fig.add_axes(ax_rect)
         frame = ax.patch
         frame.set_fill(False)
         ax.grid(True, color='#555555', linewidth=1)
 
         ax.set_frame_on(False)
-        ax.get_xaxis().set_visible(False)
+        setp(ax.get_xgridlines(), visible=True)
+        ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.hour_formatter))
+
+        if self.num_points == 25:
+            ax.xaxis.set_ticks((0, 8, 16, 24))
+
         if ylabel:
             #ylabel_obj = ax.set_ylabel(ylabel)
             #ylabel_obj.set_size(int(self.cp.get("Sizes", "YLabelSize")))
@@ -462,16 +485,18 @@ class PRGraph(object):
                 verticalalignment='bottom', transform=ax.transAxes)
             ylabel_obj.set_size(int(self.cp.get("Sizes", "YLabelSize")))
         setp(ax.get_yticklabels(), size=int(self.cp.get("Sizes", "YTickSize")))
+        setp(ax.get_xticklabels(), size=int(self.cp.get("Sizes", "YTickSize")))
         setp(ax.get_ygridlines(), linestyle='-')
         setp(ax.get_yticklines(), visible=False)
+        ax.xaxis.set_ticks_position("bottom")
 
         self.ax = ax
         self.canvas = canvas
         self.fig = fig
 
-    def write_graph(self):
+    def write_graph(self, format="SVG"):
         self.canvas.draw()
-        if self.svg:
+        if format == "SVG" and "SVG" in self.format:
             renderer = matplotlib.backends.backend_svg.RendererSVG( \
                 self.width, self.height, self.file)
             self.canvas.figure.draw(renderer)
@@ -483,7 +508,9 @@ class PRGraph(object):
                 "raw", "RGBA", 0, 1)
             a, r, g, b = im.split()
             im = Image.merge("RGBA", (r, g, b, a))
-            im.save(self.file, format="PNG")
+            if format == "JPG":
+                format = "JPEG"
+            im.save(self.file, format=format)
 
     def draw(self):
         data_len = len(self.data)
@@ -498,7 +525,9 @@ class PRGraph(object):
             self.ax.set_ylim(-0.1, max_ax)
         else:
             self.ax.set_ylim(-0.5, max_ax)
-        self.ax.set_xlim(-1, data_len)
+        self.ax.set_xlim(-1, data_len+1)
+
+        self.ax.xaxis.set_ticks((0, 8, 16, 24))
 
         if self.legend:
             legend = self.ax.legend(loc=9, mode="expand",
@@ -507,15 +536,26 @@ class PRGraph(object):
             setp(legend.get_texts(), size=int(self.cp.get("Sizes", "LegendSize")))
 
     def parse_data(self):
-        pass
+        self.num_points = len(self.data)
 
-    def run(self, fp):
-        self.file = fp
+    def hour_formatter(self, x, pos=None):
+        if x == 24:
+            return "Now"
+        return "-%i hrs" % (self.num_points-x-1)
+
+    def run(self, sect):
+
         self.parse_data()
-        self.build_canvas()
-        self.draw()
-        self.write_graph()
-        fp.close()
+        for format in self.format:
+            name, tmpname = get_files(self.cp, sect, format=format)
+            self.build_canvas(format=format)
+            self.draw()
+            fd = open(tmpname, 'w')
+            self.file = fd
+            self.write_graph(format=format)
+            fd.flush()
+            os.fsync(fd)
+            commit_files(name, tmpname)
 
 
 class PRData(object):
@@ -532,6 +572,7 @@ class PRData(object):
         self.transfer_volume_rate = 0
         self.transfer_rate = 0
         self.jobs_rate = 0
+        self.total_hours = 0
 
     def set_num_sites(self, num_sites):
         self.num_sites = num_sites
@@ -563,6 +604,9 @@ class PRData(object):
     def set_transfer_rate(self, transfer_rate):
         self.transfer_rate = transfer_rate
 
+    def set_total_hours(self, hours_sum):
+        self.total_hours = hours_sum
+
     def run(self, fp):
         info = {}
         info['time'] = int(time.time())
@@ -576,10 +620,11 @@ class PRData(object):
         info['transfer_volume_rate'] = float(self.transfer_volume_rate)
         info['transfer_rate'] = float(self.transfer_rate)
         info['jobs_rate'] = float(self.jobs_rate)
+        info['total_hours'] = float(self.total_hours)
         fp.write(str(info))
         fp.flush()
+        os.fsync(fp)
         fp.close()
-
 
 def configure():
     usage = "usage: %prog -c config_file"
@@ -637,33 +682,23 @@ def main():
     # Generate the graphs
     ds = DataSource(cp)
     ds.run()
-    pr = PRGraph(cp, 1)
-    jobs_data = ds.query_jobs()
+    pr = DisplayGraph(cp, 1)
+    jobs_data, hours_data = ds.query_jobs()
     pr.data = [i/1000 for i in jobs_data]
     num_jobs = sum(jobs_data)
+    pr.run("jobs")
 
-    name, tmpname = get_files(cp, "jobs")
-    fd = open(tmpname, 'w')
-    pr.run(fd)
-    commit_files(name, tmpname)
-
-    pr = PRGraph(cp, 2)
+    pr = DisplayGraph(cp, 2)
     pr.data = ds.query_users()
-    name, tmpname = get_files(cp, "users")
-    fd = open(tmpname, 'w')
-    pr.run(fd)
-    commit_files(name, tmpname)
+    pr.run("users")
 
     # Generate the more-complex transfers graph
     dst = DataSourceTransfers(cp)
     dst.run()
-    pr = PRGraph(cp, 3)
+    pr = DisplayGraph(cp, 3)
     pr.data = [i[1]/1024./1024. for i in dst.get_data()]
     log.debug("Transfer volumes: %s" % ", ".join([str(i) for i in pr.data]))
-    name, tmpname = get_files(cp, "transfers")
-    fd = open(tmpname, 'w')
-    pr.run(fd)
-    commit_files(name, tmpname)
+    pr.run("transfers")
     transfer_data = dst.get_data()
     num_transfers = sum([i[0] for i in transfer_data])
     transfer_volume_mb = sum([i[1] for i in transfer_data])
@@ -675,6 +710,7 @@ def main():
     prd.set_num_jobs(num_jobs)
     prd.set_num_users(ds.query_user_num())
     ces, ses = ods.query_ce_se()
+    prd.set_total_hours(sum(hours_data))
     prd.set_num_ces(ces)
     prd.set_num_ses(ses)
     prd.set_num_transfers(num_transfers)
