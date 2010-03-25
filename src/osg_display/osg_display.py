@@ -175,6 +175,7 @@ class DataSource(object):
           ServerDate < %(endtime)s AND
           JUR.EndTime < %(endtime)s
         GROUP BY time
+        ORDER BY time ASC
         """
 
     users_query = """
@@ -209,6 +210,108 @@ class DataSource(object):
         ) as foo
         """
 
+class HistoricalDataSource(DataSource):
+
+    def connect_transfer(self):
+        user = self.cp.get("Gratia Transfer", "User")
+        password = self.cp.get("Gratia Transfer", "Password")
+        host = self.cp.get("Gratia Transfer", "Host")
+        database = self.cp.get("Gratia Transfer", "Database")
+        port = int(self.cp.get("Gratia Transfer", "Port"))
+        try:
+            self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
+                port=port, db=database)
+        except Exception, e:
+            log.exception(e)
+            log.error("Unable to connect to Gratia Transfer DB")
+            raise
+        curs=self.conn.cursor()
+        curs.execute("set time_zone='+0:00'")
+
+    def get_params(self):
+        months = int(int(self.cp.get("Gratia", "months"))+2)
+        end = datetime.datetime(*(list(time.gmtime()[:2]) + [1,0,0,0]))
+        start = end - datetime.timedelta(14*31, 0)
+        start -= datetime.timedelta(start.day-1, 0)
+        return {'starttime': start, 'endtime': end}
+
+    def query_jobs(self):
+        curs = self.conn.cursor()
+        params = self.get_params()
+        curs.execute(self.jobs_query, params)
+        results = curs.fetchall()
+        all_results = [(i[1], i[2]) for i in results]
+        log.info("Gratia returned %i results for jobs" % len(all_results))
+        log.debug("Job result dump:")
+        for i in results:
+            count, hrs = i[1:]
+            log.debug("Month starting on %s: Jobs %i, Job Hours %.2f" % (i[0],
+                count, hrs))
+        count_results = [i[0] for i in all_results]
+        hour_results = [i[1] for i in all_results]
+        num_results = int(self.cp.get("Gratia", "months"))
+        count_results = count_results[-num_results-1:-1]
+        hour_results = hour_results[-num_results-1:-1]
+        return count_results, hour_results
+
+    def query_transfers(self):
+        self.connect_transfer()
+        curs = self.conn.cursor()
+        params = self.get_params()
+        curs.execute(self.transfers_query, params)
+        results = curs.fetchall()
+        all_results = [(i[1], i[2]) for i in results]
+        log.info("Gratia returned %i results for transfers" % len(all_results))
+        log.debug("Transfer result dump:")
+        for i in results:
+            count, mbs = i[1:]
+            log.debug("Week starting on %s: Transfers %i, Transfer PB %.2f" % \
+                (i[0], count, mbs/1024**2))
+        count_results = [i[0] for i in all_results]
+        hour_results = [i[1] for i in all_results]
+        num_results = int(self.cp.get("Gratia", "months"))
+        count_results = count_results[-num_results-1:-1]
+        hour_results = hour_results[-num_results-1:-1]
+        return count_results, hour_results
+
+    jobs_query = """
+        SELECT
+          MIN(EndTime) AS time,
+          sum(Njobs) AS Records,
+          sum(WallDuration)/3600 AS Hours
+        FROM MasterSummaryData R
+        JOIN Probe P on R.ProbeName = P.probename
+        JOIN Site S on S.siteid = P.siteid
+        JOIN VONameCorrection VC ON (VC.corrid=R.VOcorrid)
+        JOIN VO on (VC.void = VO.void)
+        WHERE
+          EndTime  >= %(starttime)s AND
+          EndTime < %(endtime)s AND
+          ResourceType = 'Batch' AND
+          (NOT (VO.VOName regexp 'unknown|other')) AND
+          (NOT (S.SiteName regexp 'NONE|Generic|Obsolete'))
+        GROUP BY YEAR(EndTime), MONTH(EndTime)
+        ORDER BY time ASC
+    """
+
+    transfers_query = """
+        SELECT
+          MIN(StartTime) AS time,
+          sum(Njobs) AS Records,
+          sum(TransferSize*SizeUnits.Multiplier) AS MB
+        FROM MasterTransferSummary R
+        JOIN Probe P on R.ProbeName = P.probename
+        JOIN Site S on S.siteid = P.siteid
+        JOIN VONameCorrection VC ON (VC.corrid=R.VOcorrid)
+        JOIN VO on (VC.void = VO.void)
+        JOIN SizeUnits on (SizeUnits.Unit = R.StorageUnit)
+        WHERE
+          StartTime  >= %(starttime)s AND
+          StartTime < %(endtime)s AND
+          (NOT (S.SiteName regexp 'NONE|Generic|Obsolete'))
+        GROUP BY YEAR(StartTime), MONTH(StartTime)
+        ORDER BY time ASC
+    """
 
 class TransferData(object):
 
@@ -486,6 +589,10 @@ class DisplayGraph(object):
             ylabel_obj.set_size(int(self.cp.get("Sizes", "YLabelSize")))
         setp(ax.get_yticklabels(), size=int(self.cp.get("Sizes", "YTickSize")))
         setp(ax.get_xticklabels(), size=int(self.cp.get("Sizes", "YTickSize")))
+        xticks = ax.get_xticklabels()
+        #if xticks:
+            #xticks[ 0].set_horizontalalignment("left")
+            #xticks[-1].set_horizontalalignment("right")
         setp(ax.get_ygridlines(), linestyle='-')
         setp(ax.get_yticklines(), visible=False)
         ax.xaxis.set_ticks_position("bottom")
@@ -527,23 +634,34 @@ class DisplayGraph(object):
             self.ax.set_ylim(-0.5, max_ax)
         self.ax.set_xlim(-1, data_len+1)
 
-        self.ax.xaxis.set_ticks((0, 8, 16, 24))
+        if self.mode == "normal":
+            self.ax.xaxis.set_ticks((0, 8, 16, 24))
+        else:
+            self.ax.xaxis.set_ticks((0, 4, 8, 12))
 
         if self.legend:
             legend = self.ax.legend(loc=9, mode="expand",
                 bbox_to_anchor=(0.25, 1.02, 1., .102))
             setp(legend.get_frame(), visible=False)
-            setp(legend.get_texts(), size=int(self.cp.get("Sizes", "LegendSize")))
+            setp(legend.get_texts(), size=int(self.cp.get("Sizes",
+                "LegendSize")))
 
     def parse_data(self):
         self.num_points = len(self.data)
 
     def hour_formatter(self, x, pos=None):
-        if x == 24:
+        if (self.mode == "normal" and x == 24) or (self.mode == "historical" \
+                and x == 12):
             return "Now"
-        return "-%i hrs" % (self.num_points-x-1)
+        if self.mode == "historical":
+            return "%i months ago" % (self.num_points-x-1)
+        return "%i hours ago" % (self.num_points-x-1)
 
-    def run(self, sect):
+    def run(self, sect, mode="normal"):
+
+        self.mode = mode
+        if self.mode == "historical":
+            self.num_points = 12
 
         self.parse_data()
         for format in self.format:
@@ -688,22 +806,51 @@ def main():
     num_jobs = sum(jobs_data)
     pr.run("jobs")
 
-    pr = DisplayGraph(cp, 2)
-    pr.data = ds.query_users()
-    pr.run("users")
+    #pr = DisplayGraph(cp, 2)
+    #pr.data = ds.query_users()
+    #pr.run("users")
+
+    # Historical (12-month graphs)
+    ds = HistoricalDataSource(cp)
+    ds.run()
+    # Jobs graph
+    jobs_data_hist, hours_data_hist = ds.query_jobs()
+    # Job count graph
+    pr = DisplayGraph(cp, 4)
+    pr.data = [float(i)/1000000. for i in jobs_data_hist]
+    num_jobs_hist = sum(jobs_data_hist)
+    pr.run("jobs_hist", mode="historical")
+    # Hours graph
+    pr = DisplayGraph(cp, 5)
+    pr.data = [float(i)/1000000. for i in hours_data_hist]
+    num_hours_hist = sum(hours_data_hist)
+    pr.run("hours_hist", mode="historical")
+    # Transfers graph
+    transfer_data_hist, volume_data_hist = ds.query_transfers()
+    # Transfer count graph
+    pr = DisplayGraph(cp, 6)
+    pr.data = [float(i)/1000000. for i in transfer_data_hist]
+    num_transfers_hist = sum(transfer_data_hist)
+    pr.run("transfer_hist", mode="historical")
+    # Transfer volume graph
+    pr = DisplayGraph(cp, 7)
+    pr.data = [float(i)/1024.**3 for i in volume_data_hist]
+    volume_transfers_hist = sum(volume_data_hist)
+    pr.run("transfer_volume_hist", mode="historical")
 
     # Generate the more-complex transfers graph
     dst = DataSourceTransfers(cp)
     dst.run()
     pr = DisplayGraph(cp, 3)
     pr.data = [i[1]/1024./1024. for i in dst.get_data()]
-    log.debug("Transfer volumes: %s" % ", ".join([str(i) for i in pr.data]))
+    log.debug("Transfer volumes: %.2f" % ", ".join([float(i) for i in pr.data]))
     pr.run("transfers")
     transfer_data = dst.get_data()
     num_transfers = sum([i[0] for i in transfer_data])
     transfer_volume_mb = sum([i[1] for i in transfer_data])
 
     # Generate the JSON
+    log.debug("Starting JSON creation")
     ods = OIMDataSource(cp)
     prd = PRData(cp)
     prd.set_num_sites(len(ods.query_sites()))
@@ -718,11 +865,14 @@ def main():
     prd.set_transfer_volume_rate([i for i in dst.get_volume_rates()][-1])
     prd.set_jobs_rate(jobs_data[-1])
     prd.set_transfer_rate([i for i in dst.get_rates()][-1])
+    log.debug("Done creating JSON.")
 
     name, tmpname = get_files(cp, "json")
     fd = open(tmpname, 'w')
     prd.run(fd)
     commit_files(name, tmpname)
+
+    log.info("OSG Display done!")
 
 if __name__ == '__main__':
     main()
