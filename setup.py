@@ -2,7 +2,7 @@
 from distutils.core import setup
 
 setup(name="OSG_Display_Data",
-      version="0.9.4",
+      version="0.9.6",
       author="Brian Bockelman",
       author_email="bbockelm@cse.unl.edu",
       description="Scripts and tools to generate the OSG Display's data.",

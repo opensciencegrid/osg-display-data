@@ -18,6 +18,7 @@ from xml.dom.minidom import parse
 import Image
 import MySQLdb
 import matplotlib
+matplotlib.use("Agg")
 import matplotlib.figure
 import matplotlib.text
 import matplotlib.font_manager
@@ -97,6 +98,9 @@ class DataSource(object):
 
     def run(self):
         self.connect()
+
+    def disconnect(self):
+        self.conn.close()
 
     def connect(self):
         user = self.cp.get("Gratia", "User")
@@ -272,6 +276,7 @@ class HistoricalDataSource(DataSource):
         num_results = int(self.cp.get("Gratia", "months"))
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
+        self.disconnect()
         return count_results, hour_results
 
     jobs_query = """
@@ -320,7 +325,7 @@ class TransferData(object):
         self.endtime = None
         self.count = None
         self.volume_mb = None
-
+        self.createtime = time.time()
 
 def get_files(cp, config_name, format=None):
     name = cp.get("Filenames", config_name)
@@ -359,7 +364,10 @@ class DataSourceTransfers(object):
         self.load_cached()
         self.determine_missing()
         self.query_missing()
-        
+       
+    def disconnect(self):
+        self.conn.close()
+ 
     def connect(self):
         user = self.cp.get("Gratia Transfer", "User")
         password = self.cp.get("Gratia Transfer", "Password")
@@ -392,6 +400,27 @@ class DataSourceTransfers(object):
             self.data = data
             log.info("Successfully loaded transfer data from cache; %i" \
                 " cache entries." % len(data))
+            remove_data = []
+            now = globals()['time'].time()
+            now_dt = datetime.datetime.now()
+            for time, tdata in data.items():
+                 if not hasattr(tdata, 'createtime') or not tdata.createtime:
+                     log.debug("Ignoring cached data from %s as it has no " \
+                         "create time info." % time)
+                     remove_data.append(time)
+                     continue
+                 if now - tdata.createtime > 3600:
+                     log.debug("Ignoring cached data from %s as it is over " \
+                         "an hour old." % time)
+                     remove_data.append(time)
+                 if (now - tdata.createtime > 1800) and (now - \
+                         tdata.starttime).seconds > 12*3600:
+                     log.debug("Ignoring cached data from %s as it is over " \
+                         "30 minutes old and is for a recent interval." % \
+                         time)
+                     remove_data.append(time)
+            for time in remove_data:
+                del self.data[time]
         except Exception, e:
             log.warning("Unable to load cache; it may not exist. Error: %s" % \
                str(e))
@@ -423,6 +452,9 @@ class DataSourceTransfers(object):
         if (now-hour_now) < 15*60:
             hour_now -= 3600
         self.missing.add(self._timestamp_to_datetime(hour_now))
+        self.missing.add(self._timestamp_to_datetime(hour_now-3600))
+        self.missing.add(self._timestamp_to_datetime(hour_now-2*3600))
+        self.missing.add(self._timestamp_to_datetime(hour_now-3*3600))
         cur = hour_now
         hours = int(self.cp.get("Gratia Transfer", "hours"))
         while cur >= now - hours*3600:
@@ -691,6 +723,23 @@ class PRData(object):
         self.transfer_rate = 0
         self.jobs_rate = 0
         self.total_hours = 0
+        # Historical numbers
+        self.num_jobs_hist = 0
+        self.total_hours_hist = 0
+        self.num_transfers_hist = 0
+        self.transfer_volume_mb_hist = 0
+
+    def set_num_transfers_hist(self, num):
+        self.num_transfers_hist = num
+            
+    def set_num_jobs_hist(self, num):
+        self.num_jobs_hist = num
+    
+    def set_transfer_volume_mb_hist(self, mb):
+        self.transfer_volume_mb_hist = mb
+        
+    def set_total_hours_hist(self, hours):
+        self.total_hours_hist = hours
 
     def set_num_sites(self, num_sites):
         self.num_sites = num_sites
@@ -728,6 +777,10 @@ class PRData(object):
     def run(self, fp):
         info = {}
         info['time'] = int(time.time())
+        info['num_transfers_hist'] = int(self.num_transfers_hist)
+        info['num_jobs_hist'] = int(self.num_jobs_hist)
+        info['total_hours_hist'] = int(self.total_hours_hist)
+        info['transfer_volume_mb_hist'] = int(self.transfer_volume_mb_hist)
         info['num_jobs'] = int(self.num_jobs)
         info['num_users'] = int(self.num_users)
         info['num_sites'] = int(self.num_sites)
@@ -805,6 +858,8 @@ def main():
     pr.data = [i/1000 for i in jobs_data]
     num_jobs = sum(jobs_data)
     pr.run("jobs")
+    user_num = ds.query_user_num()
+    ds.disconnect()
 
     #pr = DisplayGraph(cp, 2)
     #pr.data = ds.query_users()
@@ -815,6 +870,7 @@ def main():
     ds.run()
     # Jobs graph
     jobs_data_hist, hours_data_hist = ds.query_jobs()
+    ds.disconnect()
     # Job count graph
     pr = DisplayGraph(cp, 4)
     pr.data = [float(i)/1000000. for i in jobs_data_hist]
@@ -843,11 +899,12 @@ def main():
     dst.run()
     pr = DisplayGraph(cp, 3)
     pr.data = [i[1]/1024./1024. for i in dst.get_data()]
-    log.debug("Transfer volumes: %.2f" % ", ".join([float(i) for i in pr.data]))
+    log.debug("Transfer volumes: %s" % ", ".join([str(float(i)) for i in pr.data]))
     pr.run("transfers")
     transfer_data = dst.get_data()
     num_transfers = sum([i[0] for i in transfer_data])
     transfer_volume_mb = sum([i[1] for i in transfer_data])
+    dst.disconnect()
 
     # Generate the JSON
     log.debug("Starting JSON creation")
@@ -855,7 +912,7 @@ def main():
     prd = PRData(cp)
     prd.set_num_sites(len(ods.query_sites()))
     prd.set_num_jobs(num_jobs)
-    prd.set_num_users(ds.query_user_num())
+    prd.set_num_users(user_num)
     ces, ses = ods.query_ce_se()
     prd.set_total_hours(sum(hours_data))
     prd.set_num_ces(ces)
@@ -865,6 +922,11 @@ def main():
     prd.set_transfer_volume_rate([i for i in dst.get_volume_rates()][-1])
     prd.set_jobs_rate(jobs_data[-1])
     prd.set_transfer_rate([i for i in dst.get_rates()][-1])
+    # Historical data
+    prd.set_num_transfers_hist(num_transfers_hist)
+    prd.set_transfer_volume_mb_hist(volume_transfers_hist)
+    prd.set_num_jobs_hist(num_jobs_hist)
+    prd.set_total_hours_hist(num_hours_hist)
     log.debug("Done creating JSON.")
 
     name, tmpname = get_files(cp, "json")
