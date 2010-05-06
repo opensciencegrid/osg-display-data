@@ -282,39 +282,55 @@ class HistoricalDataSource(DataSource):
     jobs_query = """
         SELECT
           MIN(EndTime) AS time,
-          sum(Njobs) AS Records,
-          sum(WallDuration)/3600 AS Hours
-        FROM MasterSummaryData R
+          SUM(Njobs) AS Records,
+          SUM(WallSeconds)/3600 AS Hours
+        FROM (
+            SELECT
+              ProbeName,
+              R.VOCorrid as VOCorrid,
+              MIN(EndTime) AS EndTime,
+              SUM(Njobs) AS NJobs,
+              SUM(WallDuration*NCores) AS WallSeconds
+            FROM MasterSummaryData R FORCE INDEX(index02)
+            WHERE
+              EndTime >= %(starttime)s AND
+              EndTime < %(endtime)s AND
+              ResourceType = 'Batch'
+            GROUP BY YEAR(EndTime), MONTH(EndTime), ProbeName, VOCorrid
+          ) as R
         JOIN Probe P on R.ProbeName = P.probename
         JOIN Site S on S.siteid = P.siteid
         JOIN VONameCorrection VC ON (VC.corrid=R.VOcorrid)
         JOIN VO on (VC.void = VO.void)
         WHERE
-          EndTime  >= %(starttime)s AND
-          EndTime < %(endtime)s AND
-          ResourceType = 'Batch' AND
-          (NOT (VO.VOName regexp 'unknown|other')) AND
-          (NOT (S.SiteName regexp 'NONE|Generic|Obsolete'))
-        GROUP BY YEAR(EndTime), MONTH(EndTime)
+          S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete') AND
+          VO.VOName NOT IN ('unknown', 'other')
+        GROUP BY time
         ORDER BY time ASC
     """
 
     transfers_query = """
         SELECT
-          MIN(StartTime) AS time,
-          sum(Njobs) AS Records,
-          sum(TransferSize*SizeUnits.Multiplier) AS MB
-        FROM MasterTransferSummary R
-        JOIN Probe P on R.ProbeName = P.probename
-        JOIN Site S on S.siteid = P.siteid
-        JOIN VONameCorrection VC ON (VC.corrid=R.VOcorrid)
-        JOIN VO on (VC.void = VO.void)
+          MIN(time) AS time,
+          SUM(Records) as Records,
+          SUM(TransferSize*SizeUnits.Multiplier) AS MB
+        FROM ( 
+            SELECT 
+              ProbeName,
+              MIN(StartTime) AS time,
+              SUM(Njobs) AS Records,
+              sum(TransferSize) AS TransferSize,
+              R.StorageUnit
+            FROM MasterTransferSummary R FORCE INDEX(index02)
+            WHERE StartTime>= %(starttime)s AND StartTime< %(endtime)s
+            GROUP BY YEAR(StartTime), MONTH(StartTime), R.StorageUnit, ProbeName
+          ) as R
+        JOIN Probe P ON R.ProbeName = P.probename
+        JOIN Site S ON S.siteid = P.siteid
         JOIN SizeUnits on (SizeUnits.Unit = R.StorageUnit)
         WHERE
-          StartTime  >= %(starttime)s AND
-          StartTime < %(endtime)s AND
-          (NOT (S.SiteName regexp 'NONE|Generic|Obsolete'))
-        GROUP BY YEAR(StartTime), MONTH(StartTime)
+          S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete')
+        GROUP BY Y,M
         ORDER BY time ASC
     """
 
