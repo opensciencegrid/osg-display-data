@@ -290,7 +290,7 @@ class HistoricalDataSource(DataSource):
               R.VOCorrid as VOCorrid,
               MIN(EndTime) AS EndTime,
               SUM(Njobs) AS NJobs,
-              SUM(WallDuration*NCores) AS WallSeconds
+              SUM(WallDuration*Cores) AS WallSeconds
             FROM MasterSummaryData R FORCE INDEX(index02)
             WHERE
               EndTime >= %(starttime)s AND
@@ -429,8 +429,9 @@ class DataSourceTransfers(object):
                      log.debug("Ignoring cached data from %s as it is over " \
                          "an hour old." % time)
                      remove_data.append(time)
-                 if (now - tdata.createtime > 1800) and (now - \
-                         tdata.starttime).seconds > 12*3600:
+                 age_starttime = now_dt - tdata.starttime
+                 age_starttime = age_starttime.days*86400 + age_starttime.seconds
+                 if (now - tdata.createtime > 1800) and (age_starttime <= 12*3600):
                      log.debug("Ignoring cached data from %s as it is over " \
                          "30 minutes old and is for a recent interval." % \
                          time)
@@ -445,7 +446,7 @@ class DataSourceTransfers(object):
         now = datetime.datetime.now()
         old_keys = []
         for key in self.data.keys():
-            if (now - key).days >= 2:
+            if (now - key).days >= 7:
                 old_keys.append(key)
         for key in old_keys:
             del self.data[key]

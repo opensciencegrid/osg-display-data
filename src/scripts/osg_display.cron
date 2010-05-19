@@ -1,1 +1,1 @@
-*/5 * * * * apache osg_display -q
+*/5 * * * * apache osg_display -q; echo "OSG Display updater exited with code $?" >> /var/log/osg_display/osg_display.log
