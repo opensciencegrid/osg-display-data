@@ -290,13 +290,15 @@ class HistoricalDataSource(DataSource):
               R.VOCorrid as VOCorrid,
               MIN(EndTime) AS EndTime,
               SUM(Njobs) AS NJobs,
-              SUM(WallDuration*Cores) AS WallSeconds
+              SUM(WallDuration*Cores) AS WallSeconds,
+              YEAR(EndTime) as Y,
+              MONTH(EndTime) as M
             FROM MasterSummaryData R FORCE INDEX(index02)
             WHERE
               EndTime >= %(starttime)s AND
               EndTime < %(endtime)s AND
               ResourceType = 'Batch'
-            GROUP BY YEAR(EndTime), MONTH(EndTime), ProbeName, VOCorrid
+            GROUP BY Y, M, ProbeName, VOCorrid
           ) as R
         JOIN Probe P on R.ProbeName = P.probename
         JOIN Site S on S.siteid = P.siteid
@@ -305,7 +307,7 @@ class HistoricalDataSource(DataSource):
         WHERE
           S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete') AND
           VO.VOName NOT IN ('unknown', 'other')
-        GROUP BY time
+        GROUP BY Y, M
         ORDER BY time ASC
     """
 
@@ -320,10 +322,12 @@ class HistoricalDataSource(DataSource):
               MIN(StartTime) AS time,
               SUM(Njobs) AS Records,
               sum(TransferSize) AS TransferSize,
-              R.StorageUnit
+              R.StorageUnit,
+              YEAR(StartTime) as Y,
+              MONTH(StartTime) as M
             FROM MasterTransferSummary R FORCE INDEX(index02)
             WHERE StartTime>= %(starttime)s AND StartTime< %(endtime)s
-            GROUP BY YEAR(StartTime), MONTH(StartTime), R.StorageUnit, ProbeName
+            GROUP BY Y, M, R.StorageUnit, ProbeName
           ) as R
         JOIN Probe P ON R.ProbeName = P.probename
         JOIN Site S ON S.siteid = P.siteid
