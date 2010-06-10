@@ -33,6 +33,33 @@ class DataSource(object):
         curs = self.conn.cursor()
         curs.execute("set time_zone='+0:00'")
 
+    def connect_transfer(self):
+        user = self.cp.get("Gratia Transfer", "User")
+        password = self.cp.get("Gratia Transfer", "Password")
+        host = self.cp.get("Gratia Transfer", "Host")
+        database = self.cp.get("Gratia Transfer", "Database")
+        port = int(self.cp.get("Gratia Transfer", "Port"))
+        try:
+            self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
+                port=port, db=database)
+        except Exception, e:
+            log.exception(e)
+            log.error("Unable to connect to Gratia Transfer DB")
+            raise
+        curs=self.conn.cursor()
+        curs.execute("set time_zone='+0:00'")
+
+
+class HourlyJobsDataSource(DataSource):
+    """
+    Hourly view of the Gratia job data
+    """
+
+    def __init__(self, cp):
+        super(HourlyJobsDataSource, self).__init__(cp)
+        self.count_results = None
+        self.hour_results = None
+
     def get_params(self):
         hours = int(int(self.cp.get("Gratia", "hours"))*1.5)
         now = int(time.time()-60)
@@ -43,22 +70,12 @@ class DataSource(object):
         return {'offset': offset, 'starttime': starttime, 'endtime': endtime,
             'span': 3600}
 
-    def query_users(self):
-        curs = self.conn.cursor()
-        params = self.get_params()
-        curs.execute(self.users_query, params)
-        results = [i[1] for i in curs.fetchall()]
-        log.info("Gratia returned %i results for users" % len(results))
-        log.debug("Results are: %s." % ", ".join([str(i) for i in results]))
-        return results
-
-    def query_user_num(self):
-        curs = self.conn.cursor()
-        params = self.get_params()
-        curs.execute(self.user_num_query, params)
-        results = curs.fetchall()[0][0]
-        log.info("Gratia returned %i active users." % results)
-        return results
+    def get_json(self):
+        assert self.count_results != None
+        assert self.hour_results != None
+        num_jobs = sum(self.count_results)
+        total_hours = sum(self.hour_results)
+        return {'num_jobs': int(num_jobs), 'total_hours': float(total_hours)}
 
     def query_jobs(self):
         curs = self.conn.cursor()
@@ -96,56 +113,8 @@ class DataSource(object):
         ORDER BY time ASC
         """
 
-    users_query = """
-        SELECT
-          time, count(*)
-        FROM (
-          SELECT
-            (truncate((unix_timestamp(ServerDate)-%(offset)s)/%(span)s, 0)*
-               %(span)s) as time,
-             JUR.CommonName as Users
-          FROM JobUsageRecord_Meta JURM
-          JOIN JobUsageRecord JUR on JURM.dbid=JUR.dbid
-          WHERE
-            ServerDate >= %(starttime)s AND
-            ServerDate < %(endtime)s
-          GROUP BY time, JUR.CommonName
-        ) as foo
-        GROUP BY time
-        """
 
-    user_num_query = """
-        SELECT
-          count(*)
-        FROM (
-          SELECT
-            distinct(JUR.CommonName)
-          FROM JobUsageRecord_Meta JURM
-          JOIN JobUsageRecord JUR on JURM.dbid=JUR.dbid
-          WHERE
-              ServerDate >= %(starttime)s AND
-              ServerDate < %(endtime)s
-        ) as foo
-        """
-
-
-class HistoricalDataSource(DataSource):
-
-    def connect_transfer(self):
-        user = self.cp.get("Gratia Transfer", "User")
-        password = self.cp.get("Gratia Transfer", "Password")
-        host = self.cp.get("Gratia Transfer", "Host")
-        database = self.cp.get("Gratia Transfer", "Database")
-        port = int(self.cp.get("Gratia Transfer", "Port"))
-        try:
-            self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
-                port=port, db=database)
-        except Exception, e:
-            log.exception(e)
-            log.error("Unable to connect to Gratia Transfer DB")
-            raise
-        curs=self.conn.cursor()
-        curs.execute("set time_zone='+0:00'")
+class MonthlyDataSource(DataSource):
 
     def get_params(self):
         months = int(int(self.cp.get("Gratia", "months"))+2)
@@ -184,7 +153,7 @@ class HistoricalDataSource(DataSource):
         log.debug("Transfer result dump:")
         for i in results:
             count, mbs = i[1:]
-            log.debug("Week starting on %s: Transfers %i, Transfer PB %.2f" % \
+            log.debug("Month starting on %s: Transfers %i, Transfer PB %.2f" % \
                 (i[0], count, mbs/1024**2))
         count_results = [i[0] for i in all_results]
         hour_results = [i[1] for i in all_results]
@@ -251,5 +220,116 @@ class HistoricalDataSource(DataSource):
           S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete')
         GROUP BY Y,M
         ORDER BY time ASC
+    """
+
+class DailyDataSource(DataSource):
+    """
+    Data source to provide transfer and job information over the past 30
+    days.  Queries the Gratia summary tables for jobs and transfers.
+    """
+
+    def get_params(self):
+        days = int(int(self.cp.get("Gratia", "days"))+2)
+        end = datetime.datetime(*(list(time.gmtime()[:3]) + [0,0,0]))
+        start = end - datetime.timedelta(days, 0)
+        start -= datetime.timedelta(start.day-1, 0)
+        return {'starttime': start, 'endtime': end}
+
+    def query_jobs(self):
+        curs = self.conn.cursor()
+        params = self.get_params()
+        curs.execute(self.jobs_query, params)
+        results = curs.fetchall()
+        all_results = [(i[1], i[2]) for i in results]
+        log.info("Gratia returned %i results for daily jobs" % len(all_results))
+        log.debug("Job result dump:")
+        for i in results:
+            count, hrs = i[1:]
+            log.debug("Day %s: Jobs %i, Job Hours %.2f" % (i[0],
+                count, hrs))
+        count_results = [i[0] for i in all_results]
+        hour_results = [i[1] for i in all_results]
+        num_results = int(self.cp.get("Gratia", "days"))
+        count_results = count_results[-num_results-1:-1]
+        hour_results = hour_results[-num_results-1:-1]
+        return count_results, hour_results
+
+    def query_transfers(self):
+        self.connect_transfer()
+        curs = self.conn.cursor()
+        params = self.get_params()
+        curs.execute(self.transfers_query, params)
+        results = curs.fetchall()
+        all_results = [(i[1], i[2]) for i in results]
+        log.info("Gratia returned %i results for daily transfers" % \
+            len(all_results))
+        log.debug("Transfer result dump:")
+        for i in results:
+            count, mbs = i[1:]
+            log.debug("Day %s: Transfers %i, Transfer PB %.2f" % \
+                (i[0], count, mbs/1024**2))
+        count_results = [i[0] for i in all_results]
+        hour_results = [i[1] for i in all_results]
+        num_results = int(self.cp.get("Gratia", "days"))
+        count_results = count_results[-num_results-1:-1]
+        hour_results = hour_results[-num_results-1:-1]
+        self.disconnect()
+        return count_results, hour_results
+
+    jobs_query = """
+        SELECT
+          Date,
+          SUM(Njobs) AS Records,
+          SUM(WallSeconds)/3600 AS Hours
+        FROM (
+            SELECT
+              ProbeName,
+              R.VOCorrid AS VOCorrid,
+              SUM(Njobs) AS NJobs,
+              SUM(WallDuration*Cores) AS WallSeconds,
+              DATE(EndTime) AS Date
+            FROM MasterSummaryData R FORCE INDEX(index02)
+            WHERE
+              EndTime >= %(starttime)s AND
+              EndTime < %(endtime)s AND
+              ResourceType = 'Batch'
+            GROUP BY Date, ProbeName, VOCorrid
+          ) as R
+        JOIN Probe P on R.ProbeName = P.probename
+        JOIN Site S on S.siteid = P.siteid
+        JOIN VONameCorrection VC ON (VC.corrid=R.VOcorrid)
+        JOIN VO on (VC.void = VO.void)
+        WHERE
+          S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete') AND
+          VO.VOName NOT IN ('unknown', 'other')
+        GROUP BY Date
+        ORDER BY Date ASC
+    """
+
+    transfers_query = """
+        SELECT
+          Date,
+          SUM(Records) as Records,
+          SUM(TransferSize*SizeUnits.Multiplier) AS MB
+        FROM ( 
+            SELECT 
+              ProbeName,
+              SUM(Njobs) AS Records,
+              sum(TransferSize) AS TransferSize,
+              R.StorageUnit,
+              DATE(StartTime) as Date
+            FROM MasterTransferSummary R FORCE INDEX(index02)
+            WHERE
+              StartTime >= %(starttime)s AND
+              StartTime < %(endtime)s
+            GROUP BY Date, R.StorageUnit, ProbeName
+          ) as R
+        JOIN Probe P ON R.ProbeName = P.probename
+        JOIN Site S ON S.siteid = P.siteid
+        JOIN SizeUnits on (SizeUnits.Unit = R.StorageUnit)
+        WHERE
+          S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete')
+        GROUP BY Date
+        ORDER BY Date ASC
     """
 

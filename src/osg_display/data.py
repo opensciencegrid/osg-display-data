@@ -22,6 +22,10 @@ class Data(object):
         self.total_hours_hist = 0
         self.num_transfers_hist = 0
         self.transfer_volume_mb_hist = 0
+        self.data_sources = []
+
+    def add_datasource(self, data_source):
+        self.data_sources.append(data_sources.get_json)
 
     def set_num_transfers_hist(self, num):
         self.num_transfers_hist = num
@@ -37,12 +41,6 @@ class Data(object):
 
     def set_num_sites(self, num_sites):
         self.num_sites = num_sites
-
-    def set_num_jobs(self, num_jobs):
-        self.num_jobs = num_jobs
-
-    def set_num_users(self, num_users):
-        self.num_users = num_users
 
     def set_num_ces(self, num_ces):
         self.num_ces = num_ces
@@ -65,9 +63,6 @@ class Data(object):
     def set_transfer_rate(self, transfer_rate):
         self.transfer_rate = transfer_rate
 
-    def set_total_hours(self, hours_sum):
-        self.total_hours = hours_sum
-
     def run(self, fp):
         info = {}
         info['time'] = int(time.time())
@@ -75,8 +70,6 @@ class Data(object):
         info['num_jobs_hist'] = int(self.num_jobs_hist)
         info['total_hours_hist'] = int(self.total_hours_hist)
         info['transfer_volume_mb_hist'] = int(self.transfer_volume_mb_hist)
-        info['num_jobs'] = int(self.num_jobs)
-        info['num_users'] = int(self.num_users)
         info['num_sites'] = int(self.num_sites)
         info['num_ces'] = int(self.num_ces)
         info['num_ses'] = int(self.num_ses)
@@ -85,7 +78,8 @@ class Data(object):
         info['transfer_volume_rate'] = float(self.transfer_volume_rate)
         info['transfer_rate'] = float(self.transfer_rate)
         info['jobs_rate'] = float(self.jobs_rate)
-        info['total_hours'] = float(self.total_hours)
+        for ds in self.data_sources:
+            info.update(ds)
         fp.write(str(info))
         fp.flush()
         os.fsync(fp)

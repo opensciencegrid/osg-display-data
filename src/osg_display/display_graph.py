@@ -132,10 +132,14 @@ class DisplayGraph(object):
             self.ax.set_ylim(-0.5, max_ax)
         self.ax.set_xlim(-1, data_len+1)
 
-        if self.mode == "normal":
+        if self.mode == "hourly":
             self.ax.xaxis.set_ticks((0, 8, 16, 24))
-        else:
+        elif self.mode == "daily":
+            self.ax.xaxis.set_ticks((0, 15, 30))
+        elif self.mode == "monthly":
             self.ax.xaxis.set_ticks((0, 4, 8, 12))
+        else:
+            raise Exception("Unknown time interval mode.")
 
         if self.legend:
             legend = self.ax.legend(loc=9, mode="expand",
@@ -148,20 +152,25 @@ class DisplayGraph(object):
         self.num_points = len(self.data)
 
     def hour_formatter(self, x, pos=None):
-        if (self.mode == "normal" and x == 24) or (self.mode == "historical" \
-                and x == 12):
+        if (self.mode == "normal" and x == 24) or (self.mode == "monthly" \
+                and x == 12) or (self.mode == "daily" and x == 30):
             return "Now"
-        if self.mode == "historical":
+        if self.mode == "monthly":
             return "%i months ago" % (self.num_points-x-1)
+        elif self.mode == "daily":
+            return "%i days ago" % (self.num_points-x-1)
         return "%i hours ago" % (self.num_points-x-1)
 
-    def run(self, sect, mode="normal"):
+    def run(self, sect, mode="hourly"):
 
         self.mode = mode
-        if self.mode == "historical":
+        if self.mode == "monthly":
             self.num_points = 12
+        elif self.mode == "daily":
+            self.num_points = 31
 
         self.parse_data()
+
         for format in self.format:
             name, tmpname = get_files(self.cp, sect, format=format)
             self.build_canvas(format=format)
