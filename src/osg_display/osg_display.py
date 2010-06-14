@@ -68,80 +68,87 @@ def main():
     log.debug("Setting script timeout to %i." % timeout)
 
     # Hourly graphs (24-hours)
-    ds = HourlyJobsDataSource(cp)
-    ds.run()
-    dg = DisplayGraph(cp, 1)
-    jobs_data, hours_data = ds.query_jobs()
+    hjds = HourlyJobsDataSource(cp)
+    hjds.run()
+    dg = DisplayGraph(cp, "jobs_hourly")
+    jobs_data, hours_data = hjds.query_jobs()
     dg.data = [i/1000 for i in jobs_data]
     num_jobs = sum(jobs_data)
     dg.run("jobs_hourly")
-    ds.disconnect()
+    hjds.disconnect()
+    dg = DisplayGraph(cp, "hours_hourly")
+    dg.data = [float(i)/1000. for i in hours_data]
+    dg.run("hours_hourly")
     # Generate the more-complex transfers graph
     dst = DataSourceTransfers(cp)
     dst.run()
-    pr = DisplayGraph(cp, 3)
-    pr.data = [i[1]/1024./1024. for i in dst.get_data()]
-    log.debug("Transfer volumes: %s" % ", ".join([str(float(i)) for i in pr.data]))
-    pr.run("transfer_volume_hourly")
+    dg = DisplayGraph(cp, "transfer_volume_hourly")
+    dg.data = [i[1]/1024./1024. for i in dst.get_data()]
+    log.debug("Transfer volumes: %s" % ", ".join([str(float(i)) for i in \
+        dg.data]))
+    dg.run("transfer_volume_hourly")
     transfer_data = dst.get_data()
+    dg = DisplayGraph(cp, "transfers_hourly")
+    dg.data = [i[0]/1000. for i in dst.get_data()]
+    dg.run("transfers_hourly")
     num_transfers = sum([i[0] for i in transfer_data])
     transfer_volume_mb = sum([i[1] for i in transfer_data])
     dst.disconnect()
 
     # Daily (30-day graphs)
-    ds = DailyDataSource(cp)
-    ds.run()
+    dds = DailyDataSource(cp)
+    dds.run()
     # Jobs graph
-    jobs_data_hist, hours_data_hist = ds.query_jobs()
-    ds.disconnect() 
+    jobs_data_daily, hours_data_daily = dds.query_jobs()
+    dds.disconnect() 
     # Job count graph
-    dg = DisplayGraph(cp, 4)
-    dg.data = [float(i)/1000000. for i in jobs_data_hist]
-    num_jobs_hist = sum(jobs_data_hist)
+    dg = DisplayGraph(cp, "jobs_daily")
+    dg.data = [float(i)/1000. for i in jobs_data_daily]
+    num_jobs_hist = sum(jobs_data_daily)
     dg.run("jobs_daily", mode="daily")
     # CPU Hours graph
-    dg = DisplayGraph(cp, 5)
-    dg.data = [float(i)/1000000. for i in hours_data_hist]
-    num_hours_hist = sum(hours_data_hist) 
+    dg = DisplayGraph(cp, "hours_daily")
+    dg.data = [float(i)/1000000. for i in hours_data_daily]
+    num_hours_hist = sum(hours_data_daily) 
     dg.run("hours_daily", mode="daily")
     # Transfers data
-    transfer_data_daily, volume_data_daily = ds.query_transfers()
+    transfer_data_daily, volume_data_daily = dds.query_transfers()
     # Transfer count graph
-    dg = DisplayGraph(cp, 6)
+    dg = DisplayGraph(cp, "transfers_daily")
     dg.data = [float(i)/1000000. for i in transfer_data_daily]
     num_transfers_daily = sum(transfer_data_daily)
     dg.run("transfers_daily", mode="daily")
     # Transfer volume graph 
-    dg = DisplayGraph(cp, 7)
+    dg = DisplayGraph(cp, "transfer_volume_daily")
     dg.data = [float(i)/1024.**3 for i in volume_data_daily]
     volume_transfers_hist = sum(volume_data_daily)
     dg.run("transfer_volume_daily", mode="daily")
 
     # Monthly graphs (12-months)
-    ds = MonthlyDataSource(cp)
-    ds.run()
+    mds = MonthlyDataSource(cp)
+    mds.run()
     # Jobs graph
-    jobs_data_monthly, hours_data_monthly = ds.query_jobs()
-    ds.disconnect()
+    jobs_data_monthly, hours_data_monthly = mds.query_jobs()
+    mds.disconnect()
     # Job count graph
-    dg = DisplayGraph(cp, 4)
+    dg = DisplayGraph(cp, "jobs_monthly")
     dg.data = [float(i)/1000000. for i in jobs_data_monthly]
     num_jobs_monthly = sum(jobs_data_monthly)
     dg.run("jobs_monthly", mode="monthly")
     # Hours graph
-    dg = DisplayGraph(cp, 5)
+    dg = DisplayGraph(cp, "hours_monthly")
     dg.data = [float(i)/1000000. for i in hours_data_monthly]
     num_hours_monthly = sum(hours_data_monthly)
     dg.run("hours_monthly", mode="monthly")
     # Transfers graph
-    transfer_data_monthly, volume_data_monthly = ds.query_transfers()
+    transfer_data_monthly, volume_data_monthly = mds.query_transfers()
     # Transfer count graph
-    dg = DisplayGraph(cp, 6)
+    dg = DisplayGraph(cp, "transfers_monthly")
     dg.data = [float(i)/1000000. for i in transfer_data_monthly]
     num_transfers_monthly = sum(transfer_data_monthly)
     dg.run("transfers_monthly", mode="monthly")
     # Transfer volume graph
-    dg = DisplayGraph(cp, 7)
+    dg = DisplayGraph(cp, "transfer_volume_monthly")
     dg.data = [float(i)/1024.**3 for i in volume_data_monthly]
     volume_transfers_monthly = sum(volume_data_monthly)
     dg.run("transfer_volume_monthly", mode="monthly")
@@ -154,19 +161,12 @@ def main():
     # Generate the JSON
     log.debug("Starting JSON creation")
     d = Data(cp)
-    d.set_num_sites(num_sites)
-    d.set_num_ces(ces)
-    d.set_num_ses(ses)
-    d.set_num_transfers(num_transfers)
-    d.set_transfer_volume_mb(transfer_volume_mb)
-    d.set_transfer_volume_rate([i for i in dst.get_volume_rates()][-1])
-    d.set_jobs_rate(jobs_data[-1])
-    d.set_transfer_rate([i for i in dst.get_rates()][-1])
+    d.add_datasource(mds)
+    d.add_datasource(hjds)
+    d.add_datasource(dst)
+    d.add_datasource(dds)
+    d.add_datasource(ods)
     # Monthly data
-    d.set_num_transfers_hist(num_transfers_monthly)
-    d.set_transfer_volume_mb_hist(volume_transfers_monthly)
-    d.set_num_jobs_hist(num_jobs_monthly)
-    d.set_total_hours_hist(num_hours_monthly)
     log.debug("Done creating JSON.")
 
     name, tmpname = get_files(cp, "json")

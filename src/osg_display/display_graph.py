@@ -1,6 +1,7 @@
 
 import os
 import Image
+import types
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.figure
@@ -16,6 +17,11 @@ from mpl_toolkits.axes_grid.parasite_axes import HostAxes, ParasiteAxes
 from common import log, get_files, commit_files
 
 dpi = 72
+
+def item_name(item, num):
+    if isinstance(num, types.IntType):
+        return "%s%i" % (item, num)
+    return "%s_%s" % (item, num)
 
 class DisplayGraph(object):
 
@@ -37,7 +43,7 @@ class DisplayGraph(object):
         self.num_points = 24
 
     def build_canvas(self, format="SVG"):
-        ylabel = self.cp.get("Labels", "YLabel%i" % self.num)
+        ylabel = self.cp.get("Labels", item_name("YLabel", self.num))
         if format=="SVG" and "SVG" in self.format:
             FigureCanvas = matplotlib.backends.backend_svg.FigureCanvasSVG
         else:
@@ -120,11 +126,11 @@ class DisplayGraph(object):
     def draw(self):
         data_len = len(self.data)
         X = range(data_len)
-        color = self.cp.get("Colors", "Line%i" % self.num)
+        color = self.cp.get("Colors", item_name("Line", self.num))
         line = self.ax.plot(X, self.data, marker="o", markeredgecolor=color,
             markerfacecolor="white", markersize=13, linewidth=5,
             markeredgewidth=5, color=color, label=self.cp.get("Labels",
-            "Legend%i" % self.num))
+            item_name("Legend", self.num)))
         max_ax = max(self.data)*1.1
         if max_ax <= 10:
             self.ax.set_ylim(-0.1, max_ax)

@@ -75,7 +75,7 @@ class HourlyJobsDataSource(DataSource):
         assert self.hour_results != None
         num_jobs = sum(self.count_results)
         total_hours = sum(self.hour_results)
-        return {'num_jobs': int(num_jobs), 'total_hours': float(total_hours)}
+        return {'jobs_hourly': int(num_jobs), 'cpu_hours_hourly': float(total_hours)}
 
     def query_jobs(self):
         curs = self.conn.cursor()
@@ -95,6 +95,7 @@ class HourlyJobsDataSource(DataSource):
         num_results = int(self.cp.get("Gratia", "hours"))
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
+        self.count_results, self.hour_results = count_results, hour_results
         return count_results, hour_results
 
     jobs_query = """
@@ -123,6 +124,19 @@ class MonthlyDataSource(DataSource):
         start -= datetime.timedelta(start.day-1, 0)
         return {'starttime': start, 'endtime': end}
 
+    def get_json(self):
+        assert self.count_results != None
+        assert self.hour_results != None
+        assert self.transfer_results != None
+        assert self.transfer_volume_results != None
+        num_jobs = sum(self.count_results)
+        total_hours = sum(self.hour_results)
+        total_transfers = sum(self.transfer_results)
+        total_transfer_volume = sum(self.transfer_volume_results)
+        return {'jobs_monthly': int(num_jobs), 'cpu_hours_monthly': \
+            float(total_hours), 'transfers_monthly': float(total_transfers),
+            'transfer_volume_mb_monthly': total_transfer_volume}
+
     def query_jobs(self):
         curs = self.conn.cursor()
         params = self.get_params()
@@ -140,6 +154,7 @@ class MonthlyDataSource(DataSource):
         num_results = int(self.cp.get("Gratia", "months"))
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
+        self.count_results, self.hour_results = count_results, hour_results
         return count_results, hour_results
 
     def query_transfers(self):
@@ -161,6 +176,8 @@ class MonthlyDataSource(DataSource):
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
         self.disconnect()
+        self.transfer_results = count_results
+        self.transfer_volume_results = hour_results
         return count_results, hour_results
 
     jobs_query = """
@@ -235,6 +252,19 @@ class DailyDataSource(DataSource):
         start -= datetime.timedelta(start.day-1, 0)
         return {'starttime': start, 'endtime': end}
 
+    def get_json(self):
+        assert self.count_results != None
+        assert self.hour_results != None
+        assert self.transfer_results != None
+        assert self.transfer_volume_results != None
+        num_jobs = sum(self.count_results)
+        total_hours = sum(self.hour_results)
+        num_transfers = int(sum(self.transfer_results))
+        transfer_volume = float(sum(self.transfer_volume_results))
+        return {'jobs_daily': int(num_jobs), 'cpu_hours_daily': \
+            float(total_hours), 'transfers_daily': num_transfers,
+            'transfer_volume_mb_daily': transfer_volume}
+
     def query_jobs(self):
         curs = self.conn.cursor()
         params = self.get_params()
@@ -252,6 +282,7 @@ class DailyDataSource(DataSource):
         num_results = int(self.cp.get("Gratia", "days"))
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
+        self.count_results, self.hour_results = count_results, hour_results
         return count_results, hour_results
 
     def query_transfers(self):
@@ -274,6 +305,8 @@ class DailyDataSource(DataSource):
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
         self.disconnect()
+        self.transfer_results, self.transfer_volume_results = count_results, \
+            hour_results
         return count_results, hour_results
 
     jobs_query = """

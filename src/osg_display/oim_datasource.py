@@ -35,6 +35,7 @@ class OIMDataSource(object):
                     pass
         log.debug("OIM returned the following sites: %s" % ", ".join(sites))
         log.info("OIM has %i registered sites." % len(sites))
+        self.sites_results = sites
         return sites
 
     def query_ce_se(self):
@@ -65,5 +66,14 @@ class OIMDataSource(object):
         log.debug("OIM returned the following CEs: %s." % ", ".join(ces))
         log.debug("OIM returned the following SEs: %s." % ", ".join(ses))
         log.info("OIM returned %i CEs and %i SEs" % (len(ces), len(ses)))
+        self.ces_results, self.ses_results = ces, ses
         return len(ces), len(ses)
+
+    def get_json(self):
+        assert self.sites_results != None
+        assert self.ces_results != None
+        assert self.ses_results != None
+        return {'num_ces': len(self.ces_results),
+            'num_ses': len(self.ses_results),
+            'num_sites': len(self.sites_results)}
 

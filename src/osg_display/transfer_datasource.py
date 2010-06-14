@@ -176,6 +176,14 @@ class DataSourceTransfers(object):
         curs.execute(self.transfers_query, params)
         return curs.fetchall()
 
+    def get_json(self):
+        assert self.transfer_results != None
+        assert self.transfer_volume_results != None
+        total_transfers = sum(self.transfer_results)
+        total_transfer_volume = sum(self.transfer_volume_results)
+        return {'transfers_hourly': total_transfers,
+            'transfer_volume_mb_hourly': total_transfer_volume}
+
     def get_data(self):
         all_times = self.data.keys()
         all_times.sort()
@@ -183,6 +191,7 @@ class DataSourceTransfers(object):
         results = []
         for time in all_times:
             results.append((self.data[time].count, self.data[time].volume_mb))
+        self.transfer_results, self.transfer_volume_results = zip(*results)
         return results
 
     def get_volume_rates(self):
