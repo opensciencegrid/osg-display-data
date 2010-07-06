@@ -181,8 +181,8 @@ class DataSourceTransfers(object):
         assert self.transfer_volume_results != None
         total_transfers = sum(self.transfer_results)
         total_transfer_volume = sum(self.transfer_volume_results)
-        return {'transfers_hourly': total_transfers,
-            'transfer_volume_mb_hourly': total_transfer_volume}
+        return {'transfers_hourly': int(total_transfers),
+            'transfer_volume_mb_hourly': int(total_transfer_volume)}
 
     def get_data(self):
         all_times = self.data.keys()

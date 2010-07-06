@@ -1,6 +1,6 @@
 %define name OSG_Display_Data
 %define version 1.0.0
-%define release 1
+%define release 3
 
 Summary: Scripts and tools to generate the OSG Display's data.
 Name: %{name}

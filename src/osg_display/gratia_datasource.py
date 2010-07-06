@@ -100,16 +100,32 @@ class HourlyJobsDataSource(DataSource):
 
     jobs_query = """
         SELECT
-          (truncate((unix_timestamp(JUR.EndTime)-%(offset)s)/%(span)s, 0)*
-            %(span)s) as time,
-          count(*) as Records,
-          sum(WallDuration)/3600 as Hours
-        FROM JobUsageRecord_Meta 
-        JOIN JobUsageRecord JUR ON JUR.dbid=JobUsageRecord_Meta.dbid
+          time,
+          sum(Records),
+          sum(Hours)
+        FROM (
+          SELECT
+            (truncate((unix_timestamp(JUR.EndTime)-%(offset)s)/%(span)s, 0)*
+              %(span)s) as time,
+            count(*) as Records,
+            sum(WallDuration)/3600 as Hours,
+            JUR.VOName as VOName,
+            JUR.ReportableVOName as ReportableVOName
+          FROM JobUsageRecord_Meta 
+          JOIN JobUsageRecord JUR ON JUR.dbid=JobUsageRecord_Meta.dbid
+          WHERE
+            ServerDate >= %(starttime)s AND
+            ServerDate < %(endtime)s AND
+            JUR.EndTime < %(endtime)s
+          GROUP BY time, VOName, ReportableVOName
+        ) as foo
+        JOIN VONameCorrection VC ON
+          ((foo.VOName = BINARY VC.VOName) AND
+           (((foo.ReportableVOName IS NULL) AND (VC.ReportableVOName IS NULL))
+            OR (BINARY foo.ReportableVOName = BINARY VC.ReportableVOName)))
+        JOIN VO on (VC.void = VO.void)
         WHERE
-          ServerDate >= %(starttime)s AND
-          ServerDate < %(endtime)s AND
-          JUR.EndTime < %(endtime)s
+          VO.VOName NOT IN ('unknown', 'other')
         GROUP BY time
         ORDER BY time ASC
         """
