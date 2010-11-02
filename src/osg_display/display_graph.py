@@ -126,12 +126,13 @@ class DisplayGraph(object):
     def draw(self):
         data_len = len(self.data)
         X = range(data_len)
+        data = [float(i) for i in self.data]
         color = self.cp.get("Colors", item_name("Line", self.num))
-        line = self.ax.plot(X, self.data, marker="o", markeredgecolor=color,
+        line = self.ax.plot(X, data, marker="o", markeredgecolor=color,
             markerfacecolor="white", markersize=13, linewidth=5,
             markeredgewidth=5, color=color, label=self.cp.get("Labels",
             item_name("Legend", self.num)))
-        max_ax = max(self.data)*1.1
+        max_ax = max(data)*1.1
         if max_ax <= 10:
             self.ax.set_ylim(-0.1, max_ax)
         else:

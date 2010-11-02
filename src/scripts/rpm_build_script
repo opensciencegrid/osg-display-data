@@ -1,7 +1,7 @@
 #!/bin/sh
 
-VERSION=1.0.0
-RELEASE=3
+VERSION=1.0.1
+RELEASE=1
 
 python setup.py sdist
 cp dist/OSG_Display_Data-$VERSION.tar.gz `rpm -E '%{_sourcedir}'`

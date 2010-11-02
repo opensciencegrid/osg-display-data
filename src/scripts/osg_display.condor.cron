@@ -1,5 +1,5 @@
 Notification = never
-DeferralTime = (CurrentTime + 300 - 15 + random(30))
+DeferralTime = (CurrentTime + 600 - 15 + random(30))
 DeferralWindow = 99999999
 DeferralPrepTime = 180
 PeriodicRelease = (HoldReasonCode =!= 1) && ((CurrentTime - EnteredCurrentStatus) > 60)

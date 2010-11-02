@@ -1,6 +1,6 @@
 %define name OSG_Display_Data
-%define version 1.0.0
-%define release 3
+%define version 1.0.1
+%define release 1
 
 Summary: Scripts and tools to generate the OSG Display's data.
 Name: %{name}
@@ -34,6 +34,14 @@ mkdir -p $RPM_BUILD_ROOT/var/www/html/osg_display
 
 %clean
 rm -rf $RPM_BUILD_ROOT
+
+%changelog
+* Mon Oct 11 2010 Brian Bockelman <bbockelm@cse.unl.edu> - 1.0.1-1
+- Force-convert data to floats
+
+* Mon Oct 11 2010 Brian Bockelman <bbockelm@cse.unl.edu> - 1.0.0-5
+- Rebuild to decrease frequency of updates.
+- Increase timeout value.
 
 %files -f INSTALLED_FILES
 %defattr(-,root,root)
