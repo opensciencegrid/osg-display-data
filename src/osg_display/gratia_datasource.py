@@ -1,9 +1,12 @@
 
 import time
+import os.path
+import cPickle
 import MySQLdb
 import datetime
-
+import tempfile
 from common import log
+from monthdelta import monthdelta
 
 class DataSource(object):
 
@@ -48,6 +51,55 @@ class DataSource(object):
             raise
         curs=self.conn.cursor()
         curs.execute("set time_zone='+0:00'")
+
+    def getcache(self):
+	cachedresultslist=[]
+	num_time_cach_read=0
+	#check if full refresh needed
+        try:
+		pickle_f_handle = open(self.cache_count_file_name)
+		num_time_cach_read = cPickle.load(pickle_f_handle)
+		pickle_f_handle.close()
+		if(num_time_cach_read >= self.deprecate_cache_after):
+			log.debug("Signaling read complete data from db, reads reached: <%s>" %(num_time_cach_read))
+			num_time_cach_read=0
+		else:
+			num_time_cach_read=num_time_cach_read+1
+			log.debug("Incrementing number of cached reads to: <%s>" %(num_time_cach_read))
+        except Exception, e:
+            log.error("Unable to find cache file: <%s>"%(self.cache_count_file_name))
+            log.exception(e)
+	#increment the current read
+	pickle_f_handle = open(self.cache_count_file_name, "w")
+	cPickle.dump(num_time_cach_read, pickle_f_handle)
+	pickle_f_handle.close()
+
+	#get cacheifneeded i.e. when num_time_cach_read > 0
+        try:
+		if(num_time_cach_read>0):
+			pickle_f_handle = open(self.cache_data_file_name)
+			cachedresultslist = cPickle.load(pickle_f_handle)
+			pickle_f_handle.close()
+			if(len(cachedresultslist) < self.refreshwindowperiod):
+				log.error("Existing cache size:  <%s> is less than refresh window size: <%s>" %(len(cachedresultslist),self.refreshwindowperiod ))
+				cachedresultslist=[]
+        except Exception, e:
+            log.exception(e)
+            log.debug("Unable to find cache file: <%s>"%(self.cache_data_file_name))
+
+	#modify the params to be sent to DB query
+	param = self.get_params()
+	end = param['endtime']
+	log.debug("Default dates received in getcache are start: <%s> and end: <%s> "%(param['starttime'],param['endtime']))
+	start = self.apply_delta(end)
+
+	#remove the cache elements that will be refreshed
+	if(len(cachedresultslist) > 0):
+		cachedresultslist=cachedresultslist[:(len(cachedresultslist)-self.refreshwindowperiod)]	
+	else:
+		start = param['starttime']	
+		log.debug("Setting date back to  start: <%s> "%(param['starttime']))
+	return 	cachedresultslist, {'starttime': start, 'endtime': end}	
 
 
 class HourlyJobsDataSource(DataSource):
@@ -132,7 +184,17 @@ class HourlyJobsDataSource(DataSource):
 
 
 class MonthlyDataSource(DataSource):
+    refreshwindowperiod=2
+    deprecate_cache_after=10 #deprecate cache after these number of reads
+    tmpdir=tempfile.gettempdir()
+    cache_data_file_name = os.path.join(tmpdir, "monthlydatasource.b")
+    cache_count_file_name = os.path.join(tmpdir, "monthlydatasourcecount.b") 
 
+    def apply_delta(self, dateobj):
+	returnval = dateobj - monthdelta(self.refreshwindowperiod)
+        returnval -= datetime.timedelta(returnval.day-1, 0)
+        return returnval
+	
     def get_params(self):
         months = int(int(self.cp.get("Gratia", "months"))+2)
         end = datetime.datetime(*(list(time.gmtime()[:2]) + [1,0,0,0]))
@@ -176,21 +238,38 @@ class MonthlyDataSource(DataSource):
     def query_transfers(self):
         self.connect_transfer()
         curs = self.conn.cursor()
-        params = self.get_params()
+	cachedresultslist, params=self.getcache()
+	log.debug("Received  <%s> cached results"%(len(cachedresultslist)))
+	log.debug("Received in query_transfers for DB Query start date: <%s> and end date <%s> "%(params['starttime'],params['endtime']))
         curs.execute(self.transfers_query, params)
         results = curs.fetchall()
-        all_results = [(i[1], i[2]) for i in results]
-        log.info("Gratia returned %i results for transfers" % len(all_results))
-        log.debug("Transfer result dump:")
+        all_results = [(i[0],i[1], i[2]) for i in results]
+	cachedresultslist.extend(all_results)
+	all_results=cachedresultslist
+        log.info( "-------- Gratia returned %i results for transfers----------------" % len(all_results))
+        log.debug("-------- Transfer result dump: DB Fetched results----------------" )
         for i in results:
             count, mbs = i[1:]
             log.debug("Month starting on %s: Transfers %i, Transfer PB %.2f" % \
                 (i[0], count, mbs/1024**2))
-        count_results = [i[0] for i in all_results]
-        hour_results = [i[1] for i in all_results]
+        log.debug("-------- Printing cached and DB Merged results----------------" )
+        for i in cachedresultslist:
+            count, mbs = i[1:]
+            log.debug("Month starting on %s: Transfers %i, Transfer PB %.2f" % \
+                (i[0], count, mbs/1024**2))
+        month_results = [i[0] for i in all_results]
+        count_results = [i[1] for i in all_results]
+        hour_results = [i[2] for i in all_results]
         num_results = int(self.cp.get("Gratia", "months"))
+        month_results = month_results[-num_results-1:-1]
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
+
+	#write the data to cache file
+	pickle_f_handle = open(self.cache_data_file_name, "w")
+	cPickle.dump(all_results, pickle_f_handle)
+	pickle_f_handle.close()
+
         self.disconnect()
         self.transfer_results = count_results
         self.transfer_volume_results = hour_results
@@ -260,6 +339,15 @@ class DailyDataSource(DataSource):
     Data source to provide transfer and job information over the past 30
     days.  Queries the Gratia summary tables for jobs and transfers.
     """
+    refreshwindowperiod=5
+    deprecate_cache_after=10  #deprecate cache after these number of reads
+    tmpdir=tempfile.gettempdir()
+    cache_data_file_name = os.path.join(tmpdir, "dailydatasource.b")
+    cache_count_file_name = os.path.join(tmpdir, "dailydatasourcecount.b") 
+
+    def apply_delta(self, dateobj):
+	returnval = dateobj - datetime.timedelta(self.refreshwindowperiod)
+        return returnval
 
     def get_params(self):
         days = int(int(self.cp.get("Gratia", "days"))+2)
@@ -304,22 +392,38 @@ class DailyDataSource(DataSource):
     def query_transfers(self):
         self.connect_transfer()
         curs = self.conn.cursor()
-        params = self.get_params()
+	cachedresultslist, params=self.getcache()
+
+	log.debug("Received  <%s> cached results"%(len(cachedresultslist)))
+	log.debug("Received in query_transfers for DB Query start date: <%s> and end date <%s> "%(params['starttime'],params['endtime']))
         curs.execute(self.transfers_query, params)
         results = curs.fetchall()
-        all_results = [(i[1], i[2]) for i in results]
-        log.info("Gratia returned %i results for daily transfers" % \
-            len(all_results))
-        log.debug("Transfer result dump:")
+        all_results = [(i[0],i[1], i[2]) for i in results]
+	cachedresultslist.extend(all_results)
+	all_results=cachedresultslist
+
+        log.info( "-------- Gratia returned %i results for transfers----------------" % len(all_results))
+        log.debug("-------- Transfer result dump: DB Fetched results----------------" )
         for i in results:
             count, mbs = i[1:]
             log.debug("Day %s: Transfers %i, Transfer PB %.2f" % \
                 (i[0], count, mbs/1024**2))
-        count_results = [i[0] for i in all_results]
-        hour_results = [i[1] for i in all_results]
+        log.debug("-------- Printing cached and DB Merged results----------------" )
+        for i in cachedresultslist:
+            count, mbs = i[1:]
+            log.debug("Day %s: Transfers %i, Transfer PB %.2f" % \
+                (i[0], count, mbs/1024**2))
+        count_results = [i[1] for i in all_results]
+        hour_results = [i[2] for i in all_results]
         num_results = int(self.cp.get("Gratia", "days"))
         count_results = count_results[-num_results-1:-1]
         hour_results = hour_results[-num_results-1:-1]
+
+	#write the data to cache file
+	pickle_f_handle = open(self.cache_data_file_name, "w")
+	cPickle.dump(all_results, pickle_f_handle)
+	pickle_f_handle.close()
+
         self.disconnect()
         self.transfer_results, self.transfer_volume_results = count_results, \
             hour_results
