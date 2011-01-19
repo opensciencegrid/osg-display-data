@@ -67,8 +67,7 @@ class DataSource(object):
 			num_time_cach_read=num_time_cach_read+1
 			log.debug("Incrementing number of cached reads to: <%s>" %(num_time_cach_read))
         except Exception, e:
-            log.error("Unable to find cache file: <%s>"%(self.cache_count_file_name))
-            log.exception(e)
+            log.info("Unable to find cache file: <%s>"%(self.cache_count_file_name))
 	#increment the current read
 	pickle_f_handle = open(self.cache_count_file_name, "w")
 	cPickle.dump(num_time_cach_read, pickle_f_handle)
@@ -81,11 +80,11 @@ class DataSource(object):
 			cachedresultslist = cPickle.load(pickle_f_handle)
 			pickle_f_handle.close()
 			if(len(cachedresultslist) < self.refreshwindowperiod):
-				log.error("Existing cache size:  <%s> is less than refresh window size: <%s>" %(len(cachedresultslist),self.refreshwindowperiod ))
+				log.info("Existing cache size:  <%s> is less than refresh window size: <%s>" %(len(cachedresultslist),self.refreshwindowperiod ))
 				cachedresultslist=[]
         except Exception, e:
             log.exception(e)
-            log.debug("Unable to find cache file: <%s>"%(self.cache_data_file_name))
+            log.info("Unable to find cache file: <%s>"%(self.cache_data_file_name))
 
 	#modify the params to be sent to DB query
 	param = self.get_params()
