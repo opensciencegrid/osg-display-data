@@ -320,7 +320,7 @@ class MonthlyDataSource(DataSource):
               R.StorageUnit,
               YEAR(StartTime) as Y,
               MONTH(StartTime) as M
-            FROM MasterTransferSummary R FORCE INDEX(index02)
+            FROM MasterTransferSummary R 
             WHERE StartTime>= %(starttime)s AND StartTime< %(endtime)s
             GROUP BY Y, M, R.StorageUnit, ProbeName
           ) as R
@@ -470,7 +470,7 @@ class DailyDataSource(DataSource):
               sum(TransferSize) AS TransferSize,
               R.StorageUnit,
               DATE(StartTime) as Date
-            FROM MasterTransferSummary R FORCE INDEX(index02)
+            FROM MasterTransferSummary R 
             WHERE
               StartTime >= %(starttime)s AND
               StartTime < %(endtime)s
