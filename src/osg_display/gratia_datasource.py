@@ -163,11 +163,12 @@ class HourlyJobsDataSource(DataSource):
             JUR.VOName as VOName,
             JUR.ReportableVOName as ReportableVOName
           FROM JobUsageRecord_Meta 
-          JOIN JobUsageRecord JUR ON JUR.dbid=JobUsageRecord_Meta.dbid
+          JOIN JobUsageRecord JUR Ignore index (index16) ON JUR.dbid=JobUsageRecord_Meta.dbid
           WHERE
             ServerDate >= %(starttime)s AND
             ServerDate < %(endtime)s AND
-            JUR.EndTime < %(endtime)s
+            JUR.EndTime < %(endtime)s AND
+            JUR.ResourceType = 'Batch'
           GROUP BY time, VOName, ReportableVOName
         ) as foo
         JOIN VONameCorrection VC ON
