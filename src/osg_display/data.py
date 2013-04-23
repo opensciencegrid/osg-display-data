@@ -16,7 +16,7 @@ class Data(object):
         info['time'] = int(time.time())
         for ds in self.data_sources:
             info.update(ds)
-        fp.write(str(info))
+        fp.write(str(info).replace("'", '"').replace('\\"', "'").replace("\\'", "'").replace(': None', ': ""'))
         fp.flush()
         os.fsync(fp)
         fp.close()
