@@ -177,7 +177,7 @@ class HourlyJobsDataSource(DataSource):
             OR (BINARY foo.ReportableVOName = BINARY VC.ReportableVOName)))
         JOIN VO on (VC.void = VO.void)
         WHERE
-          VO.VOName NOT IN ('unknown', 'other')
+          VO.VOName NOT IN ('Unknown', 'unknown', 'other')
         GROUP BY time
         ORDER BY time ASC
         """
@@ -302,7 +302,7 @@ class MonthlyDataSource(DataSource):
         JOIN VO on (VC.void = VO.void)
         WHERE
           S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete') AND
-          VO.VOName NOT IN ('unknown', 'other')
+          VO.VOName NOT IN ('Unknown', 'unknown', 'other')
         GROUP BY Y, M
         ORDER BY time ASC
     """
@@ -454,7 +454,7 @@ class DailyDataSource(DataSource):
         JOIN VO on (VC.void = VO.void)
         WHERE
           S.SiteName NOT IN ('NONE', 'Generic', 'Obsolete') AND
-          VO.VOName NOT IN ('unknown', 'other')
+          VO.VOName NOT IN ('Unknown', 'unknown', 'other')
         GROUP BY Date
         ORDER BY Date ASC
     """
