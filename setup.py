@@ -1,7 +1,7 @@
 
 from distutils.core import setup
 
-setup(name="OSG_Display_Data",
+setup(name="osg-display-data",
       version="1.0.4",
       author="Brian Bockelman",
       author_email="bbockelm@cse.unl.edu",
