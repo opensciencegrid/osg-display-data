@@ -159,7 +159,7 @@ class DisplayGraph(object):
         self.num_points = len(self.data)
 
     def hour_formatter(self, x, pos=None):
-        if (self.mode == "normal" and x == 24) or (self.mode == "monthly" \
+        if (self.mode == "hourly" and x == 24) or (self.mode == "monthly" \
                 and x == 12) or (self.mode == "daily" and x == 30):
             return "Now"
         if self.mode == "monthly":
