@@ -24,6 +24,9 @@ def configure():
         dest="quiet", default=False, action="store_true")
     parser.add_option("-d", "--debug", help="Turn on debug output",
         dest="debug", default=False, action="store_true")
+    parser.add_option("-T", "--notimeout",
+        help="Disable alarm timeout; useful for initial run",
+        dest="notimeout", default=False, action="store_true")
     opts, args = parser.parse_args()
 
     if not opts.config:
@@ -51,6 +54,8 @@ def configure():
     cp = ConfigParser.SafeConfigParser()
     cp.readfp(open(opts.config, "r"))
 
+    cp.notimeout = opts.notimeout
+
     logging.basicConfig(filename=cp.get("Settings", "logfile"))
 
     for handler in log.handlers:
@@ -65,9 +70,12 @@ def main():
     cp = configure()
 
     # Set the alarm in case if we go over time
-    timeout = int(cp.get("Settings", "timeout"))
-    signal.alarm(timeout)
-    log.debug("Setting script timeout to %i." % timeout)
+    if cp.notimeout:
+        log.debug("Running script with no timeout.")
+    else:
+        timeout = int(cp.get("Settings", "timeout"))
+        signal.alarm(timeout)
+        log.debug("Setting script timeout to %i." % timeout)
 
     # Hourly graphs (24-hours)
     watchS=time.time()
