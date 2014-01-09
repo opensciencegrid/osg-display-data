@@ -31,7 +31,8 @@ def configure():
 
     if not opts.config:
         parser.print_help()
-        print "\nMust pass a config file."
+        print
+        log.error("Must pass a config file.")
         sys.exit(1)
 
     log.handlers = []
@@ -227,7 +228,9 @@ def main():
 
     try:
         main_unwrapped()
-    except (SystemExit, Exception, KeyboardInterrupt), e:
+    except SystemExit:
+        raise
+    except (Exception, KeyboardInterrupt), e:
         log.error(str(e))
         log.exception(e)
         raise
