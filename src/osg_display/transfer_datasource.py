@@ -1,5 +1,4 @@
 
-import sets
 import time
 import pickle
 import MySQLdb
@@ -30,7 +29,7 @@ class DataSourceTransfers(object):
     def __init__(self, cp):
         self.cp = cp
         self.data = {}
-        self.missing = sets.Set()
+        self.missing = set()
         
     def run(self):
         self.connect()

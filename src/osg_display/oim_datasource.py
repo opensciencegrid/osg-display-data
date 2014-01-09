@@ -1,5 +1,4 @@
 
-import sets
 import urllib2
 
 from xml.dom.minidom import parse
@@ -26,7 +25,7 @@ class OIMDataSource(object):
     def query_sites(self):
         fd = urllib2.urlopen(self.resource_group_url)
         dom = parse(fd)
-        sites = sets.Set()
+        sites = set()
         for site_dom in dom.getElementsByTagName("Site"):
             for name_dom in site_dom.getElementsByTagName("Name"):
                 try:
@@ -43,8 +42,8 @@ class OIMDataSource(object):
             self.resource_group_url)
         fd = urllib2.urlopen(self.resource_group_url)
         dom = parse(fd)
-        ses = sets.Set()
-        ces = sets.Set()
+        ses = set()
+        ces = set()
         for service_dom in dom.getElementsByTagName("Service"):
             service_type = None
             for name_dom in service_dom.getElementsByTagName("Name"):
