@@ -200,7 +200,7 @@ class DataSource(object):
 
 class HourlyJobsDataSource(DataSource):
     """
-    Hourly view of the Gratia job data
+    Hourly view of the GRACC job data
     """
 
     def __init__(self, cp):
@@ -363,7 +363,7 @@ class MonthlyDataSource(DataSource):
 
         cachedresultslist.extend(all_results)
         all_results=cachedresultslist
-        log.info( "-------- Gratia returned %i results for transfers----------------" % len(all_results))
+        log.info( "-------- GRACC returned %i results for transfers----------------" % len(all_results))
         log.debug("-------- Transfer result dump: DB Fetched results----------------" )
         for i in all_results:
             count, mbs = i[1:]
@@ -454,7 +454,7 @@ class MonthlyDataSource(DataSource):
 class DailyDataSource(DataSource):
     """
     Data source to provide transfer and job information over the past 30
-    days.  Queries the Gratia summary tables for jobs and transfers.
+    days.  Queries the GRACC summary index for jobs and transfers.
     """
     refreshwindowperiod=5
     deprecate_cache_after=10  #deprecate cache after these number of reads
@@ -533,7 +533,7 @@ class DailyDataSource(DataSource):
         cachedresultslist.extend(all_results)
         all_results=cachedresultslist
 
-        log.info( "-------- Gratia returned %i results for transfers----------------" % len(all_results))
+        log.info( "-------- GRACC returned %i results for transfers----------------" % len(all_results))
         log.debug("-------- Transfer result dump: DB Fetched results----------------" )
         for i in all_results:
             count, mbs = i[1:]
