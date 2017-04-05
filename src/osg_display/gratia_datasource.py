@@ -18,6 +18,27 @@ logging.basicConfig(level=logging.WARN)
 jobs_raw_index = 'gracc.osg.raw-*'
 jobs_summary_index = 'gracc.osg.summary'
 
+def gracc_query_jobs(es, starttime, endtime, interval, index):
+    s = Search(using=es, index=index)
+
+    s = s.query('bool',
+            filter=[
+             Q('range', EndTime={'gte': starttime, 'lt': endtime })
+          &  Q('term',  ResourceType='Batch')
+          & ~Q('terms', SiteName=['NONE', 'Generic', 'Obsolete'])
+          & ~Q('terms', VOName=['Unknown', 'unknown', 'other'])
+        ]
+    )
+
+    curBucket = s.aggs.bucket('EndTime', 'date_histogram',
+                              field='EndTime', interval=interval)
+
+    curBucket = curBucket.metric('CoreHours', 'sum', field='CoreHours')
+    curBucket = curBucket.metric('Records', 'sum', field='Count')
+
+    response = s.execute()
+    return response
+
 def gracc_hourly_query_jobs(es, starttime, endtime, offset, interval, index):
     s = Search(using=es, index=index)
 
@@ -265,17 +286,24 @@ class MonthlyDataSource(DataSource):
             'transfer_volume_mb_monthly': total_transfer_volume}
 
     def query_jobs(self):
-        curs = self.conn.cursor()
         params = self.get_params()
-        curs.execute(self.jobs_query, params)
-        results = curs.fetchall()
-        all_results = [(i[1], i[2]) for i in results]
-        log.info("Gratia returned %i results for jobs" % len(all_results))
+
+        response = gracc_query_jobs(self.es, params['starttime'],
+                           params['endtime'], 'month', jobs_summary_index)
+
+        results = response.aggregations.EndTime.buckets
+
+        all_results = [ (x.Records.value or x.doc_count,
+                         x.CoreHours.value,
+                         x.key / 1000) for x in results ]
+
+        log.info("GRACC returned %i results for jobs" % len(all_results))
         log.debug("Job result dump:")
-        for i in results:
-            count, hrs = i[1:]
-            log.debug("Month starting on %s: Jobs %i, Job Hours %.2f" % (i[0],
-                count, hrs))
+        for count, hrs, epochtime in all_results:
+            time_tuple = time.gmtime(epochtime)
+            time_str = time.strftime("%Y-%m-%d %H:%M", time_tuple)
+            log.debug("Month starting on %s: Jobs %i, Job Hours %.2f" %
+                (time_str, count, hrs))
         count_results = [i[0] for i in all_results]
         hour_results = [i[1] for i in all_results]
         num_results = int(self.cp.get("Gratia", "months"))
@@ -419,17 +447,24 @@ class DailyDataSource(DataSource):
             'transfer_volume_mb_daily': transfer_volume}
 
     def query_jobs(self):
-        curs = self.conn.cursor()
         params = self.get_params()
-        curs.execute(self.jobs_query, params)
-        results = curs.fetchall()
-        all_results = [(i[1], i[2]) for i in results]
-        log.info("Gratia returned %i results for daily jobs" % len(all_results))
+
+        response = gracc_query_jobs(self.es, params['starttime'], params['endtime'],
+                                    'day', jobs_summary_index)
+
+        results = response.aggregations.EndTime.buckets
+
+        all_results = [ (x.Records.value or x.doc_count,
+                         x.CoreHours.value,
+                         x.key / 1000) for x in results ]
+
+        log.info("GRACC returned %i results for daily jobs" % len(all_results))
         log.debug("Job result dump:")
-        for i in results:
-            count, hrs = i[1:]
-            log.debug("Day %s: Jobs %i, Job Hours %.2f" % (i[0],
-                count, hrs))
+        for count, hrs, epochtime in all_results:
+            time_tuple = time.gmtime(epochtime)
+            time_str = time.strftime("%Y-%m-%d %H:%M", time_tuple)
+            log.debug("Day %s: Jobs %i, Job Hours %.2f" %
+                (time_str, count, hrs))
         count_results = [i[0] for i in all_results]
         hour_results = [i[1] for i in all_results]
         num_results = int(self.cp.get("Gratia", "days"))
