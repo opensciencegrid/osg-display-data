@@ -18,6 +18,9 @@ logging.basicConfig(level=logging.WARN)
 jobs_raw_index = 'gracc.osg.raw-*'
 jobs_summary_index = 'gracc.osg.summary'
 
+transfers_raw_index = 'gracc.osg-transfer.raw-*'
+transfers_summary_index = 'gracc.osg-transfer.summary'
+
 def gracc_query_jobs(es, starttime, endtime, interval, index):
     s = Search(using=es, index=index)
 
@@ -57,6 +60,25 @@ def gracc_hourly_query_jobs(es, starttime, endtime, offset, interval, index):
 
     curBucket = curBucket.metric('CoreHours', 'sum', field='CoreHours')
     curBucket = curBucket.metric('Records', 'sum', field='Count')
+
+    response = s.execute()
+    return response
+
+def gracc_query_transfers(es, starttime, endtime, interval, index):
+    s = Search(using=es, index=index)
+
+    s = s.query('bool',
+            filter=[
+             Q('range', StartTime={'gte': starttime, 'lt': endtime })
+          & ~Q('terms', SiteName=['NONE', 'Generic', 'Obsolete'])
+        ]
+    )
+
+    curBucket = s.aggs.bucket('StartTime', 'date_histogram',
+                              field='StartTime', interval=interval)
+
+    curBucket = curBucket.metric('Network', 'sum', field='Network')
+    curBucket = curBucket.metric('Records', 'sum', field='Njobs')
 
     response = s.execute()
     return response
@@ -115,6 +137,17 @@ class DataSource(object):
             raise
         curs=self.conn.cursor()
         curs.execute("set time_zone='+0:00'")
+
+        gracc_url = self.cp.get("Gracc Transfer", "Url")
+        #gracc_url = 'https://gracc.opensciencegrid.org/q'
+        try:
+            self.es = elasticsearch.Elasticsearch(
+                [gracc_url], timeout=300, use_ssl=True, verify_certs=True,
+                ca_certs='/etc/ssl/certs/ca-bundle.crt')
+        except Exception, e:
+            log.exception(e)
+            log.error("Unable to connect to Gracc database")
+            raise
 
     def getcache(self):
 	cachedresultslist=[]
@@ -314,18 +347,25 @@ class MonthlyDataSource(DataSource):
 
     def query_transfers(self):
         self.connect_transfer()
-        curs = self.conn.cursor()
         cachedresultslist, params=self.getcache()
         log.debug("Received  <%s> cached results"%(len(cachedresultslist)))
         log.debug("Received in query_transfers for DB Query start date: <%s> and end date <%s> "%(params['starttime'],params['endtime']))
-        curs.execute(self.transfers_query, params)
-        results = curs.fetchall()
-        all_results = [(i[0],i[1], i[2]) for i in results]
+
+        response = gracc_query_transfers(self.es, params['starttime'],
+                                         params['endtime'], 'month',
+                                         transfers_summary_index)
+
+        results = response.aggregations.StartTime.buckets
+
+        all_results = [ (x.key / 1000,
+                         x.Records.value,
+                         x.Network.value / 1024**2) for x in results ]
+
         cachedresultslist.extend(all_results)
         all_results=cachedresultslist
         log.info( "-------- Gratia returned %i results for transfers----------------" % len(all_results))
         log.debug("-------- Transfer result dump: DB Fetched results----------------" )
-        for i in results:
+        for i in all_results:
             count, mbs = i[1:]
             log.debug("Month starting on %s: Transfers %i, Transfer PB %.2f" % \
                 (i[0], count, mbs/1024**2))
@@ -475,20 +515,27 @@ class DailyDataSource(DataSource):
 
     def query_transfers(self):
         self.connect_transfer()
-        curs = self.conn.cursor()
         cachedresultslist, params=self.getcache()
 
         log.debug("Received  <%s> cached results"%(len(cachedresultslist)))
         log.debug("Received in query_transfers for DB Query start date: <%s> and end date <%s> "%(params['starttime'],params['endtime']))
-        curs.execute(self.transfers_query, params)
-        results = curs.fetchall()
-        all_results = [(i[0],i[1], i[2]) for i in results]
+
+        response = gracc_query_transfers(self.es, params['starttime'],
+                                         params['endtime'], 'day',
+                                         transfers_summary_index)
+
+        results = response.aggregations.StartTime.buckets
+
+        all_results = [ (x.key / 1000,
+                         x.Records.value,
+                         x.Network.value / 1024**2) for x in results ]
+
         cachedresultslist.extend(all_results)
         all_results=cachedresultslist
 
         log.info( "-------- Gratia returned %i results for transfers----------------" % len(all_results))
         log.debug("-------- Transfer result dump: DB Fetched results----------------" )
-        for i in results:
+        for i in all_results:
             count, mbs = i[1:]
             log.debug("Day %s: Transfers %i, Transfer PB %.2f" % \
                 (i[0], count, mbs/1024**2))
