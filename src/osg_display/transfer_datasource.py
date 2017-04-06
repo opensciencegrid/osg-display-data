@@ -1,10 +1,39 @@
 
 import time
 import pickle
-import MySQLdb
 import datetime
 
 from common import log, get_files, commit_files, euid
+
+import elasticsearch
+from elasticsearch_dsl import Search, A, Q
+import logging
+
+
+logging.basicConfig(level=logging.WARN)
+
+transfers_raw_index = 'gracc.osg-transfer.raw-*'
+transfers_summary_index = 'gracc.osg-transfer.summary'
+
+def gracc_query_transfers(es, index, starttime, endtime, interval):
+    s = Search(using=es, index=index)
+
+    s = s.query('bool',
+            filter=[
+             Q('range', StartTime={'gte': starttime, 'lt': endtime })
+          & ~Q('terms', SiteName=['NONE', 'Generic', 'Obsolete'])
+        ]
+    )
+
+    curBucket = s.aggs.bucket('StartTime', 'date_histogram',
+                              field='StartTime', interval=interval)
+
+    curBucket = curBucket.metric('Network', 'sum', field='Network')
+    curBucket = curBucket.metric('Records', 'sum', field='Njobs')
+
+    response = s.execute()
+    return response
+
 
 class TransferData(object):
     """
@@ -23,7 +52,7 @@ class TransferData(object):
 class DataSourceTransfers(object):
     """
     A data source which queries (and caches!) hourly transfer information from
-    Gratia
+    GRACC
     """
 
     def __init__(self, cp):
@@ -38,23 +67,20 @@ class DataSourceTransfers(object):
         self.query_missing()
        
     def disconnect(self):
-        self.conn.close()
+        pass
  
     def connect(self):
-        user = self.cp.get("Gratia Transfer", "User")
-        password = self.cp.get("Gratia Transfer", "Password")
-        host = self.cp.get("Gratia Transfer", "Host")
-        database = self.cp.get("Gratia Transfer", "Database")
-        port = int(self.cp.get("Gratia Transfer", "Port"))
+        gracc_url = self.cp.get("GRACC Transfer", "Url")
+        #gracc_url = 'https://gracc.opensciencegrid.org/q'
+
         try:
-            self.conn = MySQLdb.connect(user=user, passwd=password, host=host,
-                port=port, db=database)
+            self.es = elasticsearch.Elasticsearch(
+                [gracc_url], timeout=300, use_ssl=True, verify_certs=True,
+                ca_certs='/etc/ssl/certs/ca-bundle.crt')
         except Exception, e:
             log.exception(e)
-            log.error("Unable to connect to Gratia Transfer DB")
+            log.error("Unable to connect to GRACC database")
             raise
-        curs=self.conn.cursor()
-        curs.execute("set time_zone='+0:00'")
 
     def load_cached(self):
         try:
@@ -129,7 +155,7 @@ class DataSourceTransfers(object):
         self.missing.add(self._timestamp_to_datetime(hour_now-2*3600))
         self.missing.add(self._timestamp_to_datetime(hour_now-3*3600))
         cur = hour_now
-        hours = int(self.cp.get("Gratia Transfer", "hours"))
+        hours = int(self.cp.get("GRACC Transfer", "hours"))
         while cur >= now - hours*3600:
             cur -= 3600
             cur_dt = self._timestamp_to_datetime(cur)
@@ -165,15 +191,22 @@ class DataSourceTransfers(object):
                 self.save_cache()
 
     def query_transfers(self, starttime, endtime):
-        log.info("Querying Gratia Transfer DB for transfers from %s to %s." \
+        log.info("Querying GRACC Transfer index for transfers from %s to %s." \
             % (starttime.strftime("%Y-%m-%d %H:%M:%S"),
             endtime.strftime("%Y-%m-%d %H:%M:%S")))
-        curs = self.conn.cursor()
-        params = {'span': 3600}
+        params = {'interval': 'hour'}
         params['starttime'] = starttime
         params['endtime'] = endtime
-        curs.execute(self.transfers_query, params)
-        return curs.fetchall()
+
+        response = gracc_query_transfers(self.es, transfers_raw_index, **params)
+
+        results = response.aggregations.StartTime.buckets
+
+        all_results = [ (x.key / 1000,
+                         x.Records.value,
+                         x.Network.value / 1024**2) for x in results ]
+
+        return all_results
 
     def get_json(self):
         assert self.transfer_results != None
@@ -189,7 +222,7 @@ class DataSourceTransfers(object):
         all_times = all_times[-26:-1]
         results = []
         for time in all_times:
-            results.append((self.data[time].count, self.data[time].volume_mb))
+            results.append((int(self.data[time].count), self.data[time].volume_mb))
         self.transfer_results, self.transfer_volume_results = zip(*results)
         return results
 
@@ -216,21 +249,4 @@ class DataSourceTransfers(object):
             interval_s = interval.days*86400 + interval.seconds
             results.append(td.count/float(interval_s))
         return results
-
-
-    transfers_query = """
-        SELECT
-          (truncate((unix_timestamp(ServerDate))/%(span)s, 0)*%(span)s) as time,
-          sum(JR.Njobs) as Records,
-          sum(Value*SU.Multiplier) as SizeMB
-        FROM JobUsageRecord_Meta JURM
-        JOIN Network N on (JURM.dbid = N.dbid)
-        JOIN SizeUnits SU on N.StorageUnit = SU.Unit
-	JOIN JobUsageRecord JR ON JURM.dbid = JR.dbid
-        WHERE
-          ServerDate >= %(starttime)s AND
-          ServerDate < %(endtime)s
-        GROUP BY time;
-        """
-
 
