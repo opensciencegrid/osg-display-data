@@ -9,7 +9,7 @@ import time
 
 from common import log, get_files, commit_files
 from oim_datasource import OIMDataSource
-from gratia_datasource import HourlyJobsDataSource, DailyDataSource, \
+from gracc_datasource import HourlyJobsDataSource, DailyDataSource, \
     MonthlyDataSource
 from transfer_datasource import DataSourceTransfers
 from data import Data
