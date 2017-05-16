@@ -1,4 +1,5 @@
 
+import sys
 import time
 import os.path
 import cPickle
@@ -13,6 +14,9 @@ import logging
 
 
 logging.basicConfig(level=logging.WARN)
+tracer = logging.getLogger('elasticsearch.trace')
+tracer.setLevel(logging.WARN)
+tracer.addHandler(logging.StreamHandler(sys.stderr))
 
 jobs_raw_index = 'gracc.osg.raw-*'
 jobs_summary_index = 'gracc.osg.summary'

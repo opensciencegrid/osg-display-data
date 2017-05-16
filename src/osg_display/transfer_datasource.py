@@ -1,4 +1,5 @@
 
+import sys
 import time
 import pickle
 import datetime
@@ -11,6 +12,9 @@ import logging
 
 
 logging.basicConfig(level=logging.WARN)
+tracer = logging.getLogger('elasticsearch.trace')
+tracer.setLevel(logging.WARN)
+tracer.addHandler(logging.StreamHandler(sys.stderr))
 
 transfers_raw_index = 'gracc.osg-transfer.raw-*'
 transfers_summary_index = 'gracc.osg-transfer.summary'
