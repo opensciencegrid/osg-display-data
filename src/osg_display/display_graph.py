@@ -135,7 +135,7 @@ class DisplayGraph(object):
             markerfacecolor="white", markersize=13, linewidth=5,
             markeredgewidth=5, color=color, label=self.cp.get("Labels",
             item_name("Legend", self.num)))
-        max_ax = max(data)*1.1
+        max_ax = max(data)*1.1 if data else 0
         if max_ax <= 10:
             self.ax.set_ylim(-0.1, max_ax)
         else:
