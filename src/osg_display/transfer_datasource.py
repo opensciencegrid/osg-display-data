@@ -227,7 +227,10 @@ class DataSourceTransfers(object):
         results = []
         for time in all_times:
             results.append((int(self.data[time].count), self.data[time].volume_mb))
-        self.transfer_results, self.transfer_volume_results = zip(*results)
+        if results:
+            self.transfer_results, self.transfer_volume_results = zip(*results)
+        else:
+            self.transfer_results, self.transfer_volume_results = [[],[]]
         return results
 
     def get_volume_rates(self):
