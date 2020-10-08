@@ -79,8 +79,7 @@ class DataSourceTransfers(object):
 
         try:
             self.es = elasticsearch.Elasticsearch(
-                [gracc_url], timeout=300, use_ssl=True, verify_certs=True,
-                ca_certs='/etc/ssl/certs/ca-bundle.crt')
+                [gracc_url], timeout=300, use_ssl=True, verify_certs=True)
         except Exception as e:
             log.exception(e)
             log.error("Unable to connect to GRACC database")
