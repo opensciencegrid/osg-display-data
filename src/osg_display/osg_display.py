@@ -121,7 +121,7 @@ def main():
     dds.run()
     # Jobs graph
     jobs_data_daily, hours_data_daily = dds.query_jobs()
-    dds.disconnect() 
+    dds.disconnect()
     log.debug("Time log - 30-Day Query Time: %s", (time.time() - watchS))
     # Job count graph
     watchS=time.time()
@@ -134,7 +134,7 @@ def main():
     watchS=time.time()
     dg = DisplayGraph(cp, "hours_daily")
     dg.data = [float(i)/1000000. for i in hours_data_daily]
-    num_hours_hist = sum(hours_data_daily) 
+    num_hours_hist = sum(hours_data_daily)
     dg.run("hours_daily", mode="daily")
     log.debug("Time log - 30-Day CPU Graph Time: %s", (time.time() - watchS))
     # Transfers data
@@ -148,7 +148,7 @@ def main():
     num_transfers_daily = sum(transfer_data_daily)
     dg.run("transfers_daily", mode="daily")
     log.debug("Time log - 30-Day Transfer Count Graph Time: %s", (time.time() - watchS))
-    # Transfer volume graph 
+    # Transfer volume graph
     watchS=time.time()
     dg = DisplayGraph(cp, "transfer_volume_daily")
     dg.data = [float(i)/1024.**3 for i in volume_data_daily]

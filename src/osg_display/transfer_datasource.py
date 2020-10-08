@@ -63,16 +63,16 @@ class DataSourceTransfers(object):
         self.cp = cp
         self.data = {}
         self.missing = set()
-        
+
     def run(self):
         self.connect()
         self.load_cached()
         self.determine_missing()
         self.query_missing()
-       
+
     def disconnect(self):
         pass
- 
+
     def connect(self):
         gracc_url = self.cp.get("GRACC Transfer", "Url")
         #gracc_url = 'https://gracc.opensciencegrid.org/q'

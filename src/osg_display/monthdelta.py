@@ -132,7 +132,7 @@ class monthdelta:
     def __bool__(self):
         return bool(self.__months)
     __nonzero__ = __bool__
-    
+
 monthdelta.min = monthdelta(-99999999)
 monthdelta.max = monthdelta(99999999)
 
