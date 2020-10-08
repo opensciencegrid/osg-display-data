@@ -33,9 +33,9 @@ def get_files(cp, config_name, format=None):
 def commit_files(name, tmpname):
     log.debug("Overwriting %s with %s." % (name, tmpname))
     try:
-        os.chmod(tmpname, 0644)
+        os.chmod(tmpname, 0o644)
         shutil.move(tmpname, name)
-    except Exception, e:
+    except Exception as e:
         log.exception(e)
         log.error("Unable to overwrite old file %s." % name)
         raise

@@ -4,7 +4,7 @@ import time
 import pickle
 import datetime
 
-from common import log, get_files, commit_files, euid
+from .common import log, get_files, commit_files, euid
 
 import elasticsearch
 from elasticsearch_dsl import Search, A, Q
@@ -81,7 +81,7 @@ class DataSourceTransfers(object):
             self.es = elasticsearch.Elasticsearch(
                 [gracc_url], timeout=300, use_ssl=True, verify_certs=True,
                 ca_certs='/etc/ssl/certs/ca-bundle.crt')
-        except Exception, e:
+        except Exception as e:
             log.exception(e)
             log.error("Unable to connect to GRACC database")
             raise
@@ -91,7 +91,7 @@ class DataSourceTransfers(object):
             data = pickle.load(open(self.cp.get("Filenames", "transfer_data") \
                 % {'uid': euid}, "r"))
             # Verify we didn't get useless data
-            for time, tdata in data.items():
+            for time, tdata in list(data.items()):
                 assert isinstance(time, datetime.datetime)
                 assert isinstance(tdata, TransferData)
                 assert isinstance(tdata.starttime, datetime.datetime)
@@ -105,7 +105,7 @@ class DataSourceTransfers(object):
             remove_data = []
             now = globals()['time'].time()
             now_dt = datetime.datetime.now()
-            for time, tdata in data.items():
+            for time, tdata in list(data.items()):
                  if not hasattr(tdata, 'createtime') or not tdata.createtime:
                      log.debug("Ignoring cached data from %s as it has no " \
                          "create time info." % time)
@@ -124,14 +124,14 @@ class DataSourceTransfers(object):
                      remove_data.append(time)
             for time in remove_data:
                 del self.data[time]
-        except Exception, e:
+        except Exception as e:
             log.warning("Unable to load cache; it may not exist. Error: %s" % \
                str(e))
 
     def save_cache(self):
         now = datetime.datetime.now()
         old_keys = []
-        for key in self.data.keys():
+        for key in list(self.data.keys()):
             if (now - key).days >= 7:
                 old_keys.append(key)
         for key in old_keys:
@@ -143,7 +143,7 @@ class DataSourceTransfers(object):
             fp.close()
             commit_files(name, tmpname)
             log.debug("Saved data to cache.")
-        except Exception, e:
+        except Exception as e:
             log.warning("Unable to write cache; message: %s" % str(e))
 
     def _timestamp_to_datetime(self, ts):
@@ -221,20 +221,20 @@ class DataSourceTransfers(object):
             'transfer_volume_mb_hourly': int(total_transfer_volume)}
 
     def get_data(self):
-        all_times = self.data.keys()
+        all_times = list(self.data.keys())
         all_times.sort()
         all_times = all_times[-26:-1]
         results = []
         for time in all_times:
             results.append((int(self.data[time].count), self.data[time].volume_mb))
         if results:
-            self.transfer_results, self.transfer_volume_results = zip(*results)
+            self.transfer_results, self.transfer_volume_results = list(zip(*results))
         else:
             self.transfer_results, self.transfer_volume_results = [[],[]]
         return results
 
     def get_volume_rates(self):
-        all_times = self.data.keys()
+        all_times = list(self.data.keys())
         all_times.sort()
         all_times = all_times[-26:-1]
         results = []
@@ -246,7 +246,7 @@ class DataSourceTransfers(object):
         return results
 
     def get_rates(self):
-        all_times = self.data.keys()
+        all_times = list(self.data.keys())
         all_times.sort()
         all_times = all_times[-26:-1]
         results = []

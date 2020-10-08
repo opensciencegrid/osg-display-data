@@ -4,16 +4,16 @@ import sys
 import signal
 import logging
 import optparse
-import ConfigParser
+import configparser
 import time
 
-from common import log, get_files, commit_files
-from oim_datasource import OIMDataSource
-from gracc_datasource import HourlyJobsDataSource, DailyDataSource, \
+from .common import log, get_files, commit_files
+from .oim_datasource import OIMDataSource
+from .gracc_datasource import HourlyJobsDataSource, DailyDataSource, \
     MonthlyDataSource
-from transfer_datasource import DataSourceTransfers
-from data import Data
-from display_graph import DisplayGraph
+from .transfer_datasource import DataSourceTransfers
+from .data import Data
+from .display_graph import DisplayGraph
 
 def configure():
     usage = "usage: %prog -c config_file"
@@ -31,7 +31,7 @@ def configure():
 
     if not opts.config:
         parser.print_help()
-        print
+        print()
         log.error("Must pass a config file.")
         sys.exit(1)
 
@@ -52,7 +52,7 @@ def configure():
     if not opts.quiet:
         log.info("Reading from log file %s." % opts.config)
 
-    cp = ConfigParser.SafeConfigParser()
+    cp = configparser.SafeConfigParser()
     cp.readfp(open(opts.config, "r"))
 
     cp.notimeout = opts.notimeout
@@ -108,7 +108,7 @@ def main():
     dg.run("transfer_volume_hourly")
     transfer_data = dst.get_data()
     dg = DisplayGraph(cp, "transfers_hourly")
-    dg.data = [long(i[0])/1000. for i in dst.get_data()]
+    dg.data = [int(i[0])/1000. for i in dst.get_data()]
     dg.run("transfers_hourly")
     num_transfers = sum([i[0] for i in transfer_data])
     transfer_volume_mb = sum([i[1] for i in transfer_data])
@@ -230,7 +230,7 @@ def main():
         main_unwrapped()
     except SystemExit:
         raise
-    except (Exception, KeyboardInterrupt), e:
+    except (Exception, KeyboardInterrupt) as e:
         log.error(str(e))
         log.exception(e)
         raise

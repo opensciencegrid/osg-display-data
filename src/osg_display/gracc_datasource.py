@@ -2,11 +2,11 @@
 import sys
 import time
 import os.path
-import cPickle
+import pickle
 import datetime
 import tempfile
-from common import log
-from monthdelta import monthdelta
+from .common import log
+from .monthdelta import monthdelta
 
 import elasticsearch
 from elasticsearch_dsl import Search, A, Q
@@ -85,7 +85,7 @@ class DataSource(object):
             self.es = elasticsearch.Elasticsearch(
                 [gracc_url], timeout=300, use_ssl=True, verify_certs=True,
                 ca_certs='/etc/ssl/certs/ca-bundle.crt')
-        except Exception, e:
+        except Exception as e:
             log.exception(e)
             log.error("Unable to connect to GRACC database")
             raise
@@ -106,7 +106,7 @@ class DataSource(object):
         #check if full refresh needed
         try:
                 pickle_f_handle = open(self.cache_count_file_name)
-                num_time_cach_read = cPickle.load(pickle_f_handle)
+                num_time_cach_read = pickle.load(pickle_f_handle)
                 pickle_f_handle.close()
                 if(num_time_cach_read >= self.deprecate_cache_after):
                         log.debug("Signaling read complete data from db, reads reached: <%s>" %(num_time_cach_read))
@@ -114,23 +114,23 @@ class DataSource(object):
                 else:
                         num_time_cach_read=num_time_cach_read+1
                         log.debug("Incrementing number of cached reads to: <%s>" %(num_time_cach_read))
-        except Exception, e:
+        except Exception as e:
             log.info("Unable to find cache file: <%s>"%(self.cache_count_file_name))
         #increment the current read
         pickle_f_handle = open(self.cache_count_file_name, "w")
-        cPickle.dump(num_time_cach_read, pickle_f_handle)
+        pickle.dump(num_time_cach_read, pickle_f_handle)
         pickle_f_handle.close()
 
         #get cacheifneeded i.e. when num_time_cach_read > 0
         try:
                 if(num_time_cach_read>0):
                         pickle_f_handle = open(self.cache_data_file_name)
-                        cachedresultslist = cPickle.load(pickle_f_handle)
+                        cachedresultslist = pickle.load(pickle_f_handle)
                         pickle_f_handle.close()
                         if(len(cachedresultslist) < self.refreshwindowperiod):
                                 log.info("Existing cache size:  <%s> is less than refresh window size: <%s>" %(len(cachedresultslist),self.refreshwindowperiod ))
                                 cachedresultslist=[]
-        except Exception, e:
+        except Exception as e:
             log.exception(e)
             log.info("Unable to find cache file: <%s>"%(self.cache_data_file_name))
 
@@ -298,7 +298,7 @@ class MonthlyDataSource(DataSource):
 
         #write the data to cache file
         pickle_f_handle = open(self.cache_data_file_name, "w")
-        cPickle.dump(all_results, pickle_f_handle)
+        pickle.dump(all_results, pickle_f_handle)
         pickle_f_handle.close()
 
         self.disconnect()
@@ -406,7 +406,7 @@ class DailyDataSource(DataSource):
 
         #write the data to cache file
         pickle_f_handle = open(self.cache_data_file_name, "w")
-        cPickle.dump(all_results, pickle_f_handle)
+        pickle.dump(all_results, pickle_f_handle)
         pickle_f_handle.close()
 
         self.disconnect()

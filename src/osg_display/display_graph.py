@@ -17,12 +17,12 @@ import matplotlib.ticker as ticker
 from matplotlib.pylab import setp
 from mpl_toolkits.axes_grid.parasite_axes import HostAxes, ParasiteAxes
 
-from common import log, get_files, commit_files
+from .common import log, get_files, commit_files
 
 dpi = 72
 
 def item_name(item, num):
-    if isinstance(num, types.IntType):
+    if isinstance(num, int):
         return "%s%i" % (item, num)
     return "%s_%s" % (item, num)
 
@@ -128,7 +128,7 @@ class DisplayGraph(object):
 
     def draw(self):
         data_len = len(self.data)
-        X = range(data_len)
+        X = list(range(data_len))
         data = [float(i) for i in self.data]
         color = self.cp.get("Colors", item_name("Line", self.num))
         line = self.ax.plot(X, data, marker="o", markeredgecolor=color,
