@@ -203,7 +203,10 @@ class DataSourceTransfers(object):
 
         response = gracc_query_transfers(self.es, transfers_raw_index, **params)
 
-        results = response.aggregations.StartTime.buckets
+        try:
+            results = response.aggregations.StartTime.buckets
+        except AttributeError:
+            results = []
 
         all_results = [ (x.key / 1000,
                          x.Records.value,
