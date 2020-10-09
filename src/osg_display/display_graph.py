@@ -118,12 +118,14 @@ class DisplayGraph(object):
         else:
             size = self.canvas.get_renderer().get_canvas_width_height()
             buf = self.canvas.tostring_argb()
-            im = Image.fromstring("RGBA", (int(size[0]), int(size[1])), buf,
+            im = Image.frombytes("RGBA", (int(size[0]), int(size[1])), buf,
                 "raw", "RGBA", 0, 1)
             a, r, g, b = im.split()
             im = Image.merge("RGBA", (r, g, b, a))
             if format == "JPG":
                 format = "JPEG"
+            if format == "JPEG":
+                im = im.convert("RGB")
             im.save(self.file, format=format)
 
     def draw(self):
@@ -185,7 +187,10 @@ class DisplayGraph(object):
             name, tmpname = get_files(self.cp, sect, format=format)
             self.build_canvas(format=format)
             self.draw()
-            fd = open(tmpname, 'w')
+            if format in ['SVG']: # String output formats
+                fd = open(tmpname, 'w')
+            else: # Byte output formats
+                fd = open(tmpname, 'wb')
             self.file = fd
             self.write_graph(format=format)
             fd.flush()

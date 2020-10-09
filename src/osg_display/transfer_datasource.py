@@ -88,7 +88,7 @@ class DataSourceTransfers(object):
     def load_cached(self):
         try:
             data = pickle.load(open(self.cp.get("Filenames", "transfer_data") \
-                % {'uid': euid}, "r"))
+                % {'uid': euid}, "rb"))
             # Verify we didn't get useless data
             for time, tdata in list(data.items()):
                 assert isinstance(time, datetime.datetime)
@@ -137,7 +137,7 @@ class DataSourceTransfers(object):
             del self.data[key]
         try:
             name, tmpname = get_files(self.cp, "transfer_data")
-            fp = open(tmpname, 'w')
+            fp = open(tmpname, 'wb')
             pickle.dump(self.data, fp)
             fp.close()
             commit_files(name, tmpname)

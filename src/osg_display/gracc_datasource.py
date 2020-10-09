@@ -104,7 +104,7 @@ class DataSource(object):
         num_time_cach_read=0
         #check if full refresh needed
         try:
-                pickle_f_handle = open(self.cache_count_file_name)
+                pickle_f_handle = open(self.cache_count_file_name, "b")
                 num_time_cach_read = pickle.load(pickle_f_handle)
                 pickle_f_handle.close()
                 if(num_time_cach_read >= self.deprecate_cache_after):
@@ -116,14 +116,14 @@ class DataSource(object):
         except Exception as e:
             log.info("Unable to find cache file: <%s>"%(self.cache_count_file_name))
         #increment the current read
-        pickle_f_handle = open(self.cache_count_file_name, "w")
+        pickle_f_handle = open(self.cache_count_file_name, "wb")
         pickle.dump(num_time_cach_read, pickle_f_handle)
         pickle_f_handle.close()
 
         #get cacheifneeded i.e. when num_time_cach_read > 0
         try:
                 if(num_time_cach_read>0):
-                        pickle_f_handle = open(self.cache_data_file_name)
+                        pickle_f_handle = open(self.cache_data_file_name, "b")
                         cachedresultslist = pickle.load(pickle_f_handle)
                         pickle_f_handle.close()
                         if(len(cachedresultslist) < self.refreshwindowperiod):
@@ -296,7 +296,7 @@ class MonthlyDataSource(DataSource):
         hour_results = hour_results[-num_results:]
 
         #write the data to cache file
-        pickle_f_handle = open(self.cache_data_file_name, "w")
+        pickle_f_handle = open(self.cache_data_file_name, "wb")
         pickle.dump(all_results, pickle_f_handle)
         pickle_f_handle.close()
 
@@ -404,7 +404,7 @@ class DailyDataSource(DataSource):
         hour_results = hour_results[-num_results-1:-1]
 
         #write the data to cache file
-        pickle_f_handle = open(self.cache_data_file_name, "w")
+        pickle_f_handle = open(self.cache_data_file_name, "wb")
         pickle.dump(all_results, pickle_f_handle)
         pickle_f_handle.close()
 
