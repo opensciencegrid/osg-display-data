@@ -57,8 +57,6 @@ def configure():
 
     cp.notimeout = opts.notimeout
 
-    logging.basicConfig(filename=cp.get("Settings", "logfile"))
-
     for handler in log.handlers:
         formatter = logging.Formatter("%(asctime)s - %(levelname)s - " \
             "%(message)s")
