@@ -63,16 +63,10 @@ class DisplayGraph(object):
         fig.set_dpi(dpi)
         fig.set_facecolor('white')
         if self.legend:
-            ax_rect = (.11, 0.06, .89, .85)
+            ax_rect = (.12, 0.07, .89, .84)
+            #          L     B    R    T
         else:
-            label_len = len(ylabel)
-            extra = label_len*.006
-            if label_len > 5:
-                extra += .01
-            if label_len < 5:
-                extra -= .02
-            extra = 0.0
-            ax_rect = (.05+extra, 0.06, .91-extra, .86)
+            ax_rect = (.06, 0.07, .91, .85)
         left, right, top, bottom = ax_rect[0], ax_rect[0] + ax_rect[2], \
             ax_rect[1]+ax_rect[3]+.10, ax_rect[1]
         ax = fig.add_axes(ax_rect)
@@ -81,7 +75,7 @@ class DisplayGraph(object):
         ax.grid(True, color='#555555', linewidth=1)
 
         ax.set_frame_on(False)
-        setp(ax.get_xgridlines(), visible=True)
+        setp(ax.get_xgridlines(), visible=True, linestyle='--')
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.hour_formatter))
 
         if self.num_points == 25:
