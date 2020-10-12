@@ -1,5 +1,6 @@
 
 import os
+import random
 import sys
 import signal
 import logging
@@ -27,6 +28,9 @@ def configure():
     parser.add_option("-T", "--notimeout",
         help="Disable alarm timeout; useful for initial run",
         dest="notimeout", default=False, action="store_true")
+    parser.add_option("--daemon",
+        help="Run as daemon on interval (seconds, +/- 10%)",
+        dest="daemon", default=None, type=int)
     opts, args = parser.parse_args()
 
     if not opts.config:
@@ -62,11 +66,10 @@ def configure():
             "%(message)s")
         handler.setFormatter(formatter)
 
-    return cp
+    return opts, args, cp
 
-def main():
+def generate(cp):
     watchB=time.time()
-    cp = configure()
 
     # Set the alarm in case if we go over time
     if cp.notimeout:
@@ -220,18 +223,19 @@ def main():
     log.info("OSG Display done!")
     log.debug("Time log - Total Time: %s", (time.time() - watchB))
 
-main_unwrapped = main
-
 def main():
+    opts, args, cp = configure()
 
-    try:
-        main_unwrapped()
-    except SystemExit:
-        raise
-    except (Exception, KeyboardInterrupt) as e:
-        log.error(str(e))
-        log.exception(e)
-        raise
+    while True:
+        generate(cp)
+
+        if opts.daemon:
+            splay = 0.1 * opts.daemon # Add a +/- 10% offset
+            interval = opts.daemon + random.randrange(-splay, splay)
+            log.info("Sleeping for %d seconds", interval)
+            time.sleep(opts.daemon)
+        else:
+            break
 
 if __name__ == '__main__':
     main()
