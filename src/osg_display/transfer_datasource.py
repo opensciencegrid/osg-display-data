@@ -130,7 +130,7 @@ class DataSourceTransfers(object):
     def save_cache(self):
         now = datetime.datetime.now()
         old_keys = []
-        for key in list(self.data.keys()):
+        for key in self.data.keys():
             if (now - key).days >= 7:
                 old_keys.append(key)
         for key in old_keys:
@@ -258,4 +258,3 @@ class DataSourceTransfers(object):
             interval_s = interval.days*86400 + interval.seconds
             results.append(td.count/float(interval_s))
         return results
-
