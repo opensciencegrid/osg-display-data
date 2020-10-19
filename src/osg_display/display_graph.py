@@ -17,12 +17,12 @@ import matplotlib.ticker as ticker
 from matplotlib.pylab import setp
 from mpl_toolkits.axes_grid.parasite_axes import HostAxes, ParasiteAxes
 
-from common import log, get_files, commit_files
+from .common import log, get_files, commit_files
 
 dpi = 72
 
 def item_name(item, num):
-    if isinstance(num, types.IntType):
+    if isinstance(num, int):
         return "%s%i" % (item, num)
     return "%s_%s" % (item, num)
 
@@ -63,16 +63,10 @@ class DisplayGraph(object):
         fig.set_dpi(dpi)
         fig.set_facecolor('white')
         if self.legend:
-            ax_rect = (.11, 0.06, .89, .85)
+            ax_rect = (.12, 0.07, .89, .84)
+            #          L     B    R    T
         else:
-            label_len = len(ylabel)
-            extra = label_len*.006
-            if label_len > 5:
-                extra += .01
-            if label_len < 5:
-                extra -= .02
-            extra = 0.0
-            ax_rect = (.05+extra, 0.06, .91-extra, .86)
+            ax_rect = (.06, 0.07, .91, .85)
         left, right, top, bottom = ax_rect[0], ax_rect[0] + ax_rect[2], \
             ax_rect[1]+ax_rect[3]+.10, ax_rect[1]
         ax = fig.add_axes(ax_rect)
@@ -81,7 +75,7 @@ class DisplayGraph(object):
         ax.grid(True, color='#555555', linewidth=1)
 
         ax.set_frame_on(False)
-        setp(ax.get_xgridlines(), visible=True)
+        setp(ax.get_xgridlines(), visible=True, linestyle='--')
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(self.hour_formatter))
 
         if self.num_points == 25:
@@ -118,17 +112,19 @@ class DisplayGraph(object):
         else:
             size = self.canvas.get_renderer().get_canvas_width_height()
             buf = self.canvas.tostring_argb()
-            im = Image.fromstring("RGBA", (int(size[0]), int(size[1])), buf,
+            im = Image.frombytes("RGBA", (int(size[0]), int(size[1])), buf,
                 "raw", "RGBA", 0, 1)
             a, r, g, b = im.split()
             im = Image.merge("RGBA", (r, g, b, a))
             if format == "JPG":
                 format = "JPEG"
+            if format == "JPEG":
+                im = im.convert("RGB")
             im.save(self.file, format=format)
 
     def draw(self):
         data_len = len(self.data)
-        X = range(data_len)
+        X = list(range(data_len))
         data = [float(i) for i in self.data]
         color = self.cp.get("Colors", item_name("Line", self.num))
         line = self.ax.plot(X, data, marker="o", markeredgecolor=color,
@@ -185,7 +181,10 @@ class DisplayGraph(object):
             name, tmpname = get_files(self.cp, sect, format=format)
             self.build_canvas(format=format)
             self.draw()
-            fd = open(tmpname, 'w')
+            if format in ['SVG']: # String output formats
+                fd = open(tmpname, 'w')
+            else: # Byte output formats
+                fd = open(tmpname, 'wb')
             self.file = fd
             self.write_graph(format=format)
             fd.flush()

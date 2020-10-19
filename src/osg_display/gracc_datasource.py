@@ -2,11 +2,11 @@
 import sys
 import time
 import os.path
-import cPickle
+import pickle
 import datetime
 import tempfile
-from common import log
-from monthdelta import monthdelta
+from .common import log
+from .monthdelta import monthdelta
 
 import elasticsearch
 from elasticsearch_dsl import Search, A, Q
@@ -83,9 +83,8 @@ class DataSource(object):
     def connect_gracc_url(self, gracc_url):
         try:
             self.es = elasticsearch.Elasticsearch(
-                [gracc_url], timeout=300, use_ssl=True, verify_certs=True,
-                ca_certs='/etc/ssl/certs/ca-bundle.crt')
-        except Exception, e:
+                [gracc_url], timeout=300, use_ssl=True, verify_certs=True)
+        except Exception as e:
             log.exception(e)
             log.error("Unable to connect to GRACC database")
             raise
@@ -101,52 +100,52 @@ class DataSource(object):
         self.connect_gracc_url(gracc_url)
 
     def getcache(self):
-	cachedresultslist=[]
-	num_time_cach_read=0
-	#check if full refresh needed
+        cachedresultslist=[]
+        num_time_cach_read=0
+        #check if full refresh needed
         try:
-		pickle_f_handle = open(self.cache_count_file_name)
-		num_time_cach_read = cPickle.load(pickle_f_handle)
-		pickle_f_handle.close()
-		if(num_time_cach_read >= self.deprecate_cache_after):
-			log.debug("Signaling read complete data from db, reads reached: <%s>" %(num_time_cach_read))
-			num_time_cach_read=0
-		else:
-			num_time_cach_read=num_time_cach_read+1
-			log.debug("Incrementing number of cached reads to: <%s>" %(num_time_cach_read))
-        except Exception, e:
+                pickle_f_handle = open(self.cache_count_file_name, "b")
+                num_time_cach_read = pickle.load(pickle_f_handle)
+                pickle_f_handle.close()
+                if(num_time_cach_read >= self.deprecate_cache_after):
+                        log.debug("Signaling read complete data from db, reads reached: <%s>" %(num_time_cach_read))
+                        num_time_cach_read=0
+                else:
+                        num_time_cach_read=num_time_cach_read+1
+                        log.debug("Incrementing number of cached reads to: <%s>" %(num_time_cach_read))
+        except Exception as e:
             log.info("Unable to find cache file: <%s>"%(self.cache_count_file_name))
-	#increment the current read
-	pickle_f_handle = open(self.cache_count_file_name, "w")
-	cPickle.dump(num_time_cach_read, pickle_f_handle)
-	pickle_f_handle.close()
+        #increment the current read
+        pickle_f_handle = open(self.cache_count_file_name, "wb")
+        pickle.dump(num_time_cach_read, pickle_f_handle)
+        pickle_f_handle.close()
 
-	#get cacheifneeded i.e. when num_time_cach_read > 0
+        #get cacheifneeded i.e. when num_time_cach_read > 0
         try:
-		if(num_time_cach_read>0):
-			pickle_f_handle = open(self.cache_data_file_name)
-			cachedresultslist = cPickle.load(pickle_f_handle)
-			pickle_f_handle.close()
-			if(len(cachedresultslist) < self.refreshwindowperiod):
-				log.info("Existing cache size:  <%s> is less than refresh window size: <%s>" %(len(cachedresultslist),self.refreshwindowperiod ))
-				cachedresultslist=[]
-        except Exception, e:
+                if(num_time_cach_read>0):
+                        pickle_f_handle = open(self.cache_data_file_name, "b")
+                        cachedresultslist = pickle.load(pickle_f_handle)
+                        pickle_f_handle.close()
+                        if(len(cachedresultslist) < self.refreshwindowperiod):
+                                log.info("Existing cache size:  <%s> is less than refresh window size: <%s>" %(len(cachedresultslist),self.refreshwindowperiod ))
+                                cachedresultslist=[]
+        except Exception as e:
             log.exception(e)
             log.info("Unable to find cache file: <%s>"%(self.cache_data_file_name))
 
-	#modify the params to be sent to DB query
-	param = self.get_params()
-	end = param['endtime']
-	log.debug("Default dates received in getcache are start: <%s> and end: <%s> "%(param['starttime'],param['endtime']))
-	start = self.apply_delta(end)
+        #modify the params to be sent to DB query
+        param = self.get_params()
+        end = param['endtime']
+        log.debug("Default dates received in getcache are start: <%s> and end: <%s> "%(param['starttime'],param['endtime']))
+        start = self.apply_delta(end)
 
-	#remove the cache elements that will be refreshed
-	if(len(cachedresultslist) > 0):
-		cachedresultslist=cachedresultslist[:(len(cachedresultslist)-self.refreshwindowperiod)]	
-		param['starttime'] = start
-	else:
-		log.debug("Setting date back to  start: <%s> "%(param['starttime']))
-	return cachedresultslist, param
+        #remove the cache elements that will be refreshed
+        if(len(cachedresultslist) > 0):
+                cachedresultslist=cachedresultslist[:(len(cachedresultslist)-self.refreshwindowperiod)]
+                param['starttime'] = start
+        else:
+                log.debug("Setting date back to  start: <%s> "%(param['starttime']))
+        return cachedresultslist, param
 
 
 class HourlyJobsDataSource(DataSource):
@@ -207,13 +206,13 @@ class MonthlyDataSource(DataSource):
     deprecate_cache_after=10 #deprecate cache after these number of reads
     tmpdir=tempfile.gettempdir()
     cache_data_file_name = os.path.join(tmpdir, "monthlydatasource.b")
-    cache_count_file_name = os.path.join(tmpdir, "monthlydatasourcecount.b") 
+    cache_count_file_name = os.path.join(tmpdir, "monthlydatasourcecount.b")
 
     def apply_delta(self, dateobj):
-	returnval = dateobj - monthdelta(self.refreshwindowperiod)
+        returnval = dateobj - monthdelta(self.refreshwindowperiod)
         returnval -= datetime.timedelta(returnval.day-1, 0)
         return returnval
-	
+
     def get_params(self):
         months = int(int(self.cp.get("GRACC", "months"))+2)
         end = datetime.datetime(*(list(time.gmtime()[:2]) + [1,0,0,0]))
@@ -297,8 +296,8 @@ class MonthlyDataSource(DataSource):
         hour_results = hour_results[-num_results:]
 
         #write the data to cache file
-        pickle_f_handle = open(self.cache_data_file_name, "w")
-        cPickle.dump(all_results, pickle_f_handle)
+        pickle_f_handle = open(self.cache_data_file_name, "wb")
+        pickle.dump(all_results, pickle_f_handle)
         pickle_f_handle.close()
 
         self.disconnect()
@@ -316,10 +315,10 @@ class DailyDataSource(DataSource):
     deprecate_cache_after=10  #deprecate cache after these number of reads
     tmpdir=tempfile.gettempdir()
     cache_data_file_name = os.path.join(tmpdir, "dailydatasource.b")
-    cache_count_file_name = os.path.join(tmpdir, "dailydatasourcecount.b") 
+    cache_count_file_name = os.path.join(tmpdir, "dailydatasourcecount.b")
 
     def apply_delta(self, dateobj):
-	returnval = dateobj - datetime.timedelta(self.refreshwindowperiod)
+        returnval = dateobj - datetime.timedelta(self.refreshwindowperiod)
         return returnval
 
     def get_params(self):
@@ -405,8 +404,8 @@ class DailyDataSource(DataSource):
         hour_results = hour_results[-num_results-1:-1]
 
         #write the data to cache file
-        pickle_f_handle = open(self.cache_data_file_name, "w")
-        cPickle.dump(all_results, pickle_f_handle)
+        pickle_f_handle = open(self.cache_data_file_name, "wb")
+        pickle.dump(all_results, pickle_f_handle)
         pickle_f_handle.close()
 
         self.disconnect()

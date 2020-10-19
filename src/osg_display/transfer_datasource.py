@@ -4,7 +4,7 @@ import time
 import pickle
 import datetime
 
-from common import log, get_files, commit_files, euid
+from .common import log, get_files, commit_files, euid
 
 import elasticsearch
 from elasticsearch_dsl import Search, A, Q
@@ -63,25 +63,24 @@ class DataSourceTransfers(object):
         self.cp = cp
         self.data = {}
         self.missing = set()
-        
+
     def run(self):
         self.connect()
         self.load_cached()
         self.determine_missing()
         self.query_missing()
-       
+
     def disconnect(self):
         pass
- 
+
     def connect(self):
         gracc_url = self.cp.get("GRACC Transfer", "Url")
         #gracc_url = 'https://gracc.opensciencegrid.org/q'
 
         try:
             self.es = elasticsearch.Elasticsearch(
-                [gracc_url], timeout=300, use_ssl=True, verify_certs=True,
-                ca_certs='/etc/ssl/certs/ca-bundle.crt')
-        except Exception, e:
+                [gracc_url], timeout=300, use_ssl=True, verify_certs=True)
+        except Exception as e:
             log.exception(e)
             log.error("Unable to connect to GRACC database")
             raise
@@ -89,9 +88,9 @@ class DataSourceTransfers(object):
     def load_cached(self):
         try:
             data = pickle.load(open(self.cp.get("Filenames", "transfer_data") \
-                % {'uid': euid}, "r"))
+                % {'uid': euid}, "rb"))
             # Verify we didn't get useless data
-            for time, tdata in data.items():
+            for time, tdata in list(data.items()):
                 assert isinstance(time, datetime.datetime)
                 assert isinstance(tdata, TransferData)
                 assert isinstance(tdata.starttime, datetime.datetime)
@@ -105,7 +104,7 @@ class DataSourceTransfers(object):
             remove_data = []
             now = globals()['time'].time()
             now_dt = datetime.datetime.now()
-            for time, tdata in data.items():
+            for time, tdata in list(data.items()):
                  if not hasattr(tdata, 'createtime') or not tdata.createtime:
                      log.debug("Ignoring cached data from %s as it has no " \
                          "create time info." % time)
@@ -124,7 +123,7 @@ class DataSourceTransfers(object):
                      remove_data.append(time)
             for time in remove_data:
                 del self.data[time]
-        except Exception, e:
+        except Exception as e:
             log.warning("Unable to load cache; it may not exist. Error: %s" % \
                str(e))
 
@@ -138,12 +137,12 @@ class DataSourceTransfers(object):
             del self.data[key]
         try:
             name, tmpname = get_files(self.cp, "transfer_data")
-            fp = open(tmpname, 'w')
+            fp = open(tmpname, 'wb')
             pickle.dump(self.data, fp)
             fp.close()
             commit_files(name, tmpname)
             log.debug("Saved data to cache.")
-        except Exception, e:
+        except Exception as e:
             log.warning("Unable to write cache; message: %s" % str(e))
 
     def _timestamp_to_datetime(self, ts):
@@ -204,7 +203,10 @@ class DataSourceTransfers(object):
 
         response = gracc_query_transfers(self.es, transfers_raw_index, **params)
 
-        results = response.aggregations.StartTime.buckets
+        try:
+            results = response.aggregations.StartTime.buckets
+        except AttributeError:
+            results = []
 
         all_results = [ (x.key / 1000,
                          x.Records.value,
@@ -221,20 +223,20 @@ class DataSourceTransfers(object):
             'transfer_volume_mb_hourly': int(total_transfer_volume)}
 
     def get_data(self):
-        all_times = self.data.keys()
+        all_times = list(self.data.keys())
         all_times.sort()
         all_times = all_times[-26:-1]
         results = []
         for time in all_times:
             results.append((int(self.data[time].count), self.data[time].volume_mb))
         if results:
-            self.transfer_results, self.transfer_volume_results = zip(*results)
+            self.transfer_results, self.transfer_volume_results = list(zip(*results))
         else:
             self.transfer_results, self.transfer_volume_results = [[],[]]
         return results
 
     def get_volume_rates(self):
-        all_times = self.data.keys()
+        all_times = list(self.data.keys())
         all_times.sort()
         all_times = all_times[-26:-1]
         results = []
@@ -246,7 +248,7 @@ class DataSourceTransfers(object):
         return results
 
     def get_rates(self):
-        all_times = self.data.keys()
+        all_times = list(self.data.keys())
         all_times.sort()
         all_times = all_times[-26:-1]
         results = []
@@ -256,4 +258,3 @@ class DataSourceTransfers(object):
             interval_s = interval.days*86400 + interval.seconds
             results.append(td.count/float(interval_s))
         return results
-

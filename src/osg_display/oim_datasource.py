@@ -1,9 +1,9 @@
 
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 
 from xml.dom.minidom import parse
 
-from common import log
+from .common import log
 
 """
 This module contains the OIMDataSource class, meant to be used to pull OIM data
@@ -23,7 +23,7 @@ class OIMDataSource(object):
         '&service=on&service_1=on&service_5=on&service_2=on&service_3=on'
 
     def query_sites(self):
-        fd = urllib2.urlopen(self.resource_group_url)
+        fd = urllib.request.urlopen(self.resource_group_url)
         dom = parse(fd)
         sites = set()
         for site_dom in dom.getElementsByTagName("Site"):
@@ -40,7 +40,7 @@ class OIMDataSource(object):
     def query_ce_se(self):
         log.debug("Querying the following MyOSG URL: %s" % \
             self.resource_group_url)
-        fd = urllib2.urlopen(self.resource_group_url)
+        fd = urllib.request.urlopen(self.resource_group_url)
         dom = parse(fd)
         ses = set()
         ces = set()

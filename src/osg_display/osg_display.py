@@ -1,19 +1,20 @@
 
 import os
+import random
 import sys
 import signal
 import logging
 import optparse
-import ConfigParser
+import configparser
 import time
 
-from common import log, get_files, commit_files
-from oim_datasource import OIMDataSource
-from gracc_datasource import HourlyJobsDataSource, DailyDataSource, \
+from .common import log, get_files, commit_files
+from .oim_datasource import OIMDataSource
+from .gracc_datasource import HourlyJobsDataSource, DailyDataSource, \
     MonthlyDataSource
-from transfer_datasource import DataSourceTransfers
-from data import Data
-from display_graph import DisplayGraph
+from .transfer_datasource import DataSourceTransfers
+from .data import Data
+from .display_graph import DisplayGraph
 
 def configure():
     usage = "usage: %prog -c config_file"
@@ -27,11 +28,14 @@ def configure():
     parser.add_option("-T", "--notimeout",
         help="Disable alarm timeout; useful for initial run",
         dest="notimeout", default=False, action="store_true")
+    parser.add_option("--daemon",
+        help="Run as daemon on interval (seconds, +/- 10%)",
+        dest="daemon", default=None, type=int)
     opts, args = parser.parse_args()
 
     if not opts.config:
         parser.print_help()
-        print
+        print()
         log.error("Must pass a config file.")
         sys.exit(1)
 
@@ -52,23 +56,20 @@ def configure():
     if not opts.quiet:
         log.info("Reading from log file %s." % opts.config)
 
-    cp = ConfigParser.SafeConfigParser()
+    cp = configparser.SafeConfigParser()
     cp.readfp(open(opts.config, "r"))
 
     cp.notimeout = opts.notimeout
-
-    logging.basicConfig(filename=cp.get("Settings", "logfile"))
 
     for handler in log.handlers:
         formatter = logging.Formatter("%(asctime)s - %(levelname)s - " \
             "%(message)s")
         handler.setFormatter(formatter)
 
-    return cp
+    return opts, args, cp
 
-def main():
+def generate(cp):
     watchB=time.time()
-    cp = configure()
 
     # Set the alarm in case if we go over time
     if cp.notimeout:
@@ -108,7 +109,7 @@ def main():
     dg.run("transfer_volume_hourly")
     transfer_data = dst.get_data()
     dg = DisplayGraph(cp, "transfers_hourly")
-    dg.data = [long(i[0])/1000. for i in dst.get_data()]
+    dg.data = [int(i[0])/1000. for i in dst.get_data()]
     dg.run("transfers_hourly")
     num_transfers = sum([i[0] for i in transfer_data])
     transfer_volume_mb = sum([i[1] for i in transfer_data])
@@ -121,7 +122,7 @@ def main():
     dds.run()
     # Jobs graph
     jobs_data_daily, hours_data_daily = dds.query_jobs()
-    dds.disconnect() 
+    dds.disconnect()
     log.debug("Time log - 30-Day Query Time: %s", (time.time() - watchS))
     # Job count graph
     watchS=time.time()
@@ -134,7 +135,7 @@ def main():
     watchS=time.time()
     dg = DisplayGraph(cp, "hours_daily")
     dg.data = [float(i)/1000000. for i in hours_data_daily]
-    num_hours_hist = sum(hours_data_daily) 
+    num_hours_hist = sum(hours_data_daily)
     dg.run("hours_daily", mode="daily")
     log.debug("Time log - 30-Day CPU Graph Time: %s", (time.time() - watchS))
     # Transfers data
@@ -148,7 +149,7 @@ def main():
     num_transfers_daily = sum(transfer_data_daily)
     dg.run("transfers_daily", mode="daily")
     log.debug("Time log - 30-Day Transfer Count Graph Time: %s", (time.time() - watchS))
-    # Transfer volume graph 
+    # Transfer volume graph
     watchS=time.time()
     dg = DisplayGraph(cp, "transfer_volume_daily")
     dg.data = [float(i)/1024.**3 for i in volume_data_daily]
@@ -222,18 +223,19 @@ def main():
     log.info("OSG Display done!")
     log.debug("Time log - Total Time: %s", (time.time() - watchB))
 
-main_unwrapped = main
-
 def main():
+    opts, args, cp = configure()
 
-    try:
-        main_unwrapped()
-    except SystemExit:
-        raise
-    except (Exception, KeyboardInterrupt), e:
-        log.error(str(e))
-        log.exception(e)
-        raise
+    while True:
+        generate(cp)
+
+        if opts.daemon:
+            splay = 0.1 * opts.daemon # Add a +/- 10% offset
+            interval = opts.daemon + random.randrange(-splay, splay)
+            log.info("Sleeping for %d seconds", interval)
+            time.sleep(opts.daemon)
+        else:
+            break
 
 if __name__ == '__main__':
     main()
