@@ -227,7 +227,13 @@ def main():
     opts, args, cp = configure()
 
     while True:
-        generate(cp)
+        try:
+            generate(cp)
+        except:
+            if opts.daemon:
+                log.exception("Failed to generate new display data")
+            else:
+                raise
 
         if opts.daemon:
             splay = 0.1 * opts.daemon # Add a +/- 10% offset
