@@ -16,7 +16,7 @@ class OIMDataSource(object):
     def __init__(self, cp):
         self.cp = cp
 
-    resource_group_url = 'http://my.opensciencegrid.org/rgsummary/xml?datasource=' \
+    resource_group_url = 'http://topology.opensciencegrid.org/rgsummary/xml?datasource=' \
         'summary&all_resources=on&gridtype=on&gridtype_1=on&active=on&' \
         'active_value=1&disable=on&disable_value=0&' \
         'summary_attrs_showhierarchy=on&summary_attrs_showservice=on' \
